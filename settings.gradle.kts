@@ -11,8 +11,11 @@ pluginManagement {
         gradlePluginPortal()
     }
 }
+
 dependencyResolutionManagement {
+    // To jest ważne: wymusza używanie repozytoriów z tego pliku, a nie z modułów.
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+
     repositories {
         google()
         mavenCentral()
@@ -21,4 +24,3 @@ dependencyResolutionManagement {
 
 rootProject.name = "SafetYSec"
 include(":app")
- 
