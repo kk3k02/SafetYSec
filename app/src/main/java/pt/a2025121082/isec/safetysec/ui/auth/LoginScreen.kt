@@ -46,13 +46,14 @@ import pt.a2025121082.isec.safetysec.viewmodel.AuthViewModel
  * - Show errors/messages using Snackbars
  * - Navigate on successful authentication
  * - Offer MFA helper: resend verification email if needed
- * - Offer password reset flow
+ * - Offer password reset flow (navigate to dedicated screen)
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LoginScreen(
     viewModel: AuthViewModel,
     onNavigateToRegistration: () -> Unit,
+    onNavigateToResetPassword: () -> Unit,
     onLoginSuccess: () -> Unit
 ) {
     /** Local UI state for input fields (survives configuration changes). */
@@ -141,10 +142,13 @@ fun LoginScreen(
                     imeAction = ImeAction.Done
                 ),
                 keyboardActions = KeyboardActions(
-                    // Submit from keyboard "Done"
                     onDone = {
                         if (!state.isLoading && email.isNotBlank() && password.isNotBlank()) {
                             viewModel.login(email, password)
+                        } else if (email.isBlank() || password.isBlank()) {
+                            scope.launch {
+                                snackbarHostState.showSnackbar("Enter email and password.")
+                            }
                         }
                     }
                 )
@@ -184,17 +188,9 @@ fun LoginScreen(
 
             Spacer(Modifier.height(20.dp))
 
-            // Password reset: requires email to be filled in.
+            // Password reset: navigate to dedicated reset screen.
             TextButton(
-                onClick = {
-                    if (email.isNotBlank()) {
-                        viewModel.sendPasswordResetEmail(email)
-                    } else {
-                        scope.launch {
-                            snackbarHostState.showSnackbar("Enter your email first.")
-                        }
-                    }
-                },
+                onClick = onNavigateToResetPassword,
                 enabled = !state.isLoading
             ) {
                 Text("Forgot password?")
