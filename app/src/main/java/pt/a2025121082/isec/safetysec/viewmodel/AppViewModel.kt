@@ -44,6 +44,7 @@ data class AppUiState(
     val linkedProtectedUsers: List<User> = emptyList(),
     val rulesForSelectedProtected: MonitorRulesBundle? = null,
     val isLinkingSuccessful: Boolean = false,
+    val isRequestSuccessful: Boolean = false,
 
     // Alert cancel window state
     val isCancelWindowOpen: Boolean = false,
@@ -90,7 +91,7 @@ class AppViewModel @Inject constructor(
         try {
             val bundles = monitoringRepo.getRulesForProtected(protectedUid)
             val windows = monitoringRepo.listTimeWindows(protectedUid)
-            
+
             // Load full profiles of linked monitors
             val me = authRepo.getUserProfile(protectedUid)
             val monitorIds = me.monitors
@@ -99,9 +100,9 @@ class AppViewModel @Inject constructor(
             } else {
                 emptyList()
             }
-            
+
             state = state.copy(
-                monitorRuleBundles = bundles, 
+                monitorRuleBundles = bundles,
                 timeWindows = windows,
                 myLinkedMonitors = monitors
             )
@@ -180,7 +181,7 @@ class AppViewModel @Inject constructor(
         params: RuleParams
     ) = viewModelScope.launch {
         val me = state.me ?: return@launch
-        state = state.copy(isLoading = true, error = null)
+        state = state.copy(isLoading = true, error = null, isRequestSuccessful = false)
         try {
             val rules = enabledTypes.map { type ->
                 MonitoringRule(type = type, params = params, enabled = true)
@@ -190,11 +191,15 @@ class AppViewModel @Inject constructor(
                 monitorUid = me.uid,
                 rules = rules
             )
-            state = state.copy(isLoading = false)
+            state = state.copy(isLoading = false, isRequestSuccessful = true)
             loadRulesForProtected(protectedUid) // Refresh after update
         } catch (t: Throwable) {
             state = state.copy(isLoading = false, error = t.message)
         }
+    }
+
+    fun consumeRequestSuccess() {
+        state = state.copy(isRequestSuccessful = false)
     }
 
     fun saveAuthorizations(monitorUid: String, authorized: List<RuleType>) = viewModelScope.launch {
@@ -213,7 +218,7 @@ class AppViewModel @Inject constructor(
     fun addTimeWindow(days: List<Int>, startHour: Int, endHour: Int) = viewModelScope.launch {
         val me = state.me ?: return@launch
         val window = TimeWindow(daysOfWeek = days, startHour = startHour, endHour = endHour)
-        if (!window.isValid()) {
+        if (!window.isValid) {
             state = state.copy(error = "Invalid time window")
             return@launch
         }

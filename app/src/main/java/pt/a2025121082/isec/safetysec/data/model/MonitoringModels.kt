@@ -97,14 +97,15 @@ data class TimeWindow(
 ) {
     /**
      * Validates the time window configuration.
-     * Annotated with @Exclude to prevent Firestore from persisting it.
+     * Use @get:Exclude to ensure Firestore ignores the 'valid' property during serialization.
      */
-    @Exclude
-    fun isValid(): Boolean {
-        if (startHour !in 0..23) return false
-        if (endHour !in 0..23) return false
-        if (startHour >= endHour) return false
-        if (daysOfWeek.isEmpty()) return false
-        return true
-    }
+    @get:Exclude
+    val isValid: Boolean
+        get() {
+            if (startHour !in 0..23) return false
+            if (endHour !in 0..23) return false
+            if (startHour >= endHour) return false
+            if (daysOfWeek.isEmpty()) return false
+            return true
+        }
 }

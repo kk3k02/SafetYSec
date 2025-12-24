@@ -3,7 +3,9 @@ package pt.a2025121082.isec.safetysec.ui.monitor
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -14,8 +16,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import androidx.hilt.navigation.compose.hiltViewModel
 import pt.a2025121082.isec.safetysec.data.model.*
+import pt.a2025121082.isec.safetysec.data.repository.MonitorRulesBundle
 import pt.a2025121082.isec.safetysec.viewmodel.AppViewModel
 import pt.a2025121082.isec.safetysec.viewmodel.AuthViewModel
 import java.text.SimpleDateFormat
@@ -202,21 +206,15 @@ fun MonitorRulesScreen(vm: AppViewModel) {
     // UI selection state
     var expanded by remember { mutableStateOf(false) }
     var selectedUser by remember { mutableStateOf<User?>(null) }
+    var showRequestDialog by remember { mutableStateOf(false) }
+    var showRequestSuccessDialog by remember { mutableStateOf(false) }
 
-    // Rule toggles
-    var fall by remember { mutableStateOf(true) }
-    var accident by remember { mutableStateOf(false) }
-    var geofence by remember { mutableStateOf(false) }
-    var speed by remember { mutableStateOf(false) }
-    var inactivity by remember { mutableStateOf(false) }
-    var panic by remember { mutableStateOf(true) }
-
-    // Parameters
-    var maxSpeed by remember { mutableStateOf("") }
-    var inactMin by remember { mutableStateOf("") }
-    var geoLat by remember { mutableStateOf("") }
-    var geoLng by remember { mutableStateOf("") }
-    var geoRadius by remember { mutableStateOf("") }
+    // Observe request success state
+    LaunchedEffect(st.isRequestSuccessful) {
+        if (st.isRequestSuccessful) {
+            showRequestSuccessDialog = true
+        }
+    }
 
     // Refresh bundle when user selection changes
     LaunchedEffect(selectedUser) {
@@ -260,34 +258,143 @@ fun MonitorRulesScreen(vm: AppViewModel) {
         }
 
         if (selectedUser != null) {
-            // --- Display current authorization status ---
+            // --- Protected's Authorization Status (READ ONLY) ---
             item {
                 st.rulesForSelectedProtected?.let { bundle ->
                     Card(
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
                     ) {
                         Column(Modifier.padding(12.dp)) {
-                            Text("Agreement Status", fontWeight = FontWeight.Bold)
-                            Text(
-                                "User has authorized: ${bundle.authorizedTypes.joinToString { it.displayName() }.ifEmpty { "None yet" }}",
-                                style = MaterialTheme.typography.bodySmall
-                            )
+                            Text("Current Authorizations", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                            Text("Green = Authorized, Red = Denied", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                            Spacer(Modifier.height(8.dp))
+                            
+                            RuleType.entries.forEach { type ->
+                                val isAuth = bundle.authorizedTypes.contains(type)
+                                Row(
+                                    Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = type.displayName(),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = Color.Unspecified
+                                    )
+                                    // READ-ONLY SWITCH WITH GREEN/RED CONTRAST
+                                    Switch(
+                                        checked = isAuth,
+                                        onCheckedChange = null,
+                                        enabled = false,
+                                        colors = SwitchDefaults.colors(
+                                            disabledCheckedThumbColor = Color.White,
+                                            disabledCheckedTrackColor = Color(0xFF2E7D32), // Green
+                                            disabledUncheckedThumbColor = Color.White,
+                                            disabledUncheckedTrackColor = Color(0xFFD32F2F), // Red
+                                            disabledUncheckedBorderColor = Color(0xFFD32F2F)
+                                        )
+                                    )
+                                }
+                            }
                         }
                     }
                 }
             }
 
-            // --- Rule Toggles ---
-            item { RuleToggle("Fall Detection", fall) { fall = it } }
-            item { RuleToggle("Accident Detection", accident) { accident = it } }
-            item { RuleToggle("Geofencing", geofence) { geofence = it } }
-            item { RuleToggle("Speed Monitoring", speed) { speed = it } }
-            item { RuleToggle("Inactivity Tracking", inactivity) { inactivity = it } }
-            item { RuleToggle("Panic Button", panic) { panic = it } }
-
-            // --- Parameters Section ---
             item {
+                Button(
+                    onClick = { showRequestDialog = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                ) {
+                    Icon(Icons.Default.Edit, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Request New Configuration")
+                }
+                
+                st.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp)) }
+            }
+        } else {
+            item {
+                Text("Please select a linked protected user to view rules.", color = Color.Gray)
+            }
+        }
+    }
+
+    // --- POPUP DIALOG FOR REQUESTING RULES ---
+    if (showRequestDialog && selectedUser != null) {
+        RequestRulesDialog(
+            user = selectedUser!!,
+            onDismiss = { showRequestDialog = false },
+            onSend = { types, params ->
+                vm.requestRulesForProtected(selectedUser!!.uid, types, params)
+                showRequestDialog = false
+            }
+        )
+    }
+
+    // Request Success Dialog
+    if (showRequestSuccessDialog) {
+        AlertDialog(
+            onDismissRequest = { 
+                showRequestSuccessDialog = false
+                vm.consumeRequestSuccess()
+            },
+            title = { Text("Request Sent") },
+            text = { Text("The monitoring configuration request has been sent to the protected user.") },
+            confirmButton = {
+                TextButton(onClick = { 
+                    showRequestSuccessDialog = false
+                    vm.consumeRequestSuccess()
+                }) {
+                    Text("OK")
+                }
+            }
+        )
+    }
+}
+
+@Composable
+fun RequestRulesDialog(
+    user: User,
+    onDismiss: () -> Unit,
+    onSend: (List<RuleType>, RuleParams) -> Unit
+) {
+    // Rule toggles for Request - ALL DEFAULT TO FALSE
+    var fall by remember { mutableStateOf(false) }
+    var accident by remember { mutableStateOf(false) }
+    var geofence by remember { mutableStateOf(false) }
+    var speed by remember { mutableStateOf(false) }
+    var inactivity by remember { mutableStateOf(false) }
+    var panic by remember { mutableStateOf(false) }
+
+    // Parameters - ALL DEFAULT TO EMPTY
+    var maxSpeed by remember { mutableStateOf("") }
+    var inactMin by remember { mutableStateOf("") }
+    var geoLat by remember { mutableStateOf("") }
+    var geoLng by remember { mutableStateOf("") }
+    var geoRadius by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Request Rules for ${user.name}") },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+            ) {
+                Text("Select rules you want to monitor:", style = MaterialTheme.typography.labelSmall)
+                Spacer(Modifier.height(8.dp))
+
+                RuleToggle("Fall Detection", fall) { fall = it }
+                RuleToggle("Accident Detection", accident) { accident = it }
+                RuleToggle("Geofencing", geofence) { geofence = it }
+                RuleToggle("Speed Monitoring", speed) { speed = it }
+                RuleToggle("Inactivity Tracking", inactivity) { inactivity = it }
+                RuleToggle("Panic Button", panic) { panic = it }
+
                 Spacer(Modifier.height(16.dp))
                 if (speed) {
                     OutlinedTextField(
@@ -333,44 +440,38 @@ fun MonitorRulesScreen(vm: AppViewModel) {
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                     )
                 }
-
-                Spacer(Modifier.height(24.dp))
-                
-                Button(
-                    onClick = {
-                        val lat = geoLat.toDoubleOrNull() ?: 0.0
-                        val lng = geoLng.toDoubleOrNull() ?: 0.0
-                        val rad = geoRadius.toDoubleOrNull() ?: 0.0
-                        
-                        vm.requestRulesForProtected(
-                            protectedUid = selectedUser!!.uid,
-                            enabledTypes = buildList {
-                                if (fall) add(RuleType.FALL)
-                                if (accident) add(RuleType.ACCIDENT)
-                                if (geofence) add(RuleType.GEOFENCE)
-                                if (speed) add(RuleType.SPEED)
-                                if (inactivity) add(RuleType.INACTIVITY)
-                                if (panic) add(RuleType.PANIC)
-                            },
-                            params = RuleParams(
-                                maxSpeed = maxSpeed.toFloatOrNull(),
-                                inactivityDurationMin = inactMin.toIntOrNull(),
-                                geofenceAreas = if (geofence) listOf(GeofenceArea(lat, lng, rad)) else null
-                            )
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                val types = buildList {
+                    if (fall) add(RuleType.FALL)
+                    if (accident) add(RuleType.ACCIDENT)
+                    if (geofence) add(RuleType.GEOFENCE)
+                    if (speed) add(RuleType.SPEED)
+                    if (inactivity) add(RuleType.INACTIVITY)
+                    if (panic) add(RuleType.PANIC)
+                }
+                val params = RuleParams(
+                    maxSpeed = maxSpeed.toFloatOrNull(),
+                    inactivityDurationMin = inactMin.toIntOrNull(),
+                    geofenceAreas = if (geofence) listOf(
+                        GeofenceArea(
+                            geoLat.toDoubleOrNull() ?: 0.0,
+                            geoLng.toDoubleOrNull() ?: 0.0,
+                            geoRadius.toDoubleOrNull() ?: 0.0
                         )
-                    },
-                    enabled = !st.isLoading,
-                    modifier = Modifier.fillMaxWidth()
-                ) { Text("Update Configuration Request") }
-
-                st.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp)) }
+                    ) else null
+                )
+                onSend(types, params)
+            }) {
+                Text("Send Request")
             }
-        } else {
-            item {
-                Text("Please select a linked protected user to configure rules.", color = Color.Gray)
-            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
         }
-    }
+    )
 }
 
 @Composable
@@ -382,7 +483,7 @@ private fun RuleToggle(label: String, checked: Boolean, onChange: (Boolean) -> U
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(label)
+        Text(label, style = MaterialTheme.typography.bodyMedium)
         Switch(checked = checked, onCheckedChange = onChange)
     }
 }

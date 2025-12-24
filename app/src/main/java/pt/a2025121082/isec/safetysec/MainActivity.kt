@@ -7,8 +7,8 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Logout
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -55,15 +55,15 @@ class MainActivity : ComponentActivity() {
  */
 private object Routes {
     // Auth
-    const val Login = "login"
-    const val Register = "register"
-    const val ResetPassword = "reset_password"
-    const val Profile = "profile"
+    const val LOGIN = "login"
+    const val REGISTER = "register"
+    const val RESET_PASSWORD = "reset_password"
+    const val PROFILE = "profile"
 
     // Role + flows
-    const val RolePicker = "role_picker"
-    const val ProtectedFlow = "protected_flow"
-    const val MonitorFlow = "monitor_flow"
+    const val ROLE_PICKER = "role_picker"
+    const val PROTECTED_FLOW = "protected_flow"
+    const val MONITOR_FLOW = "monitor_flow"
 }
 
 /**
@@ -75,34 +75,37 @@ private fun SafetYSecApp(
     authViewModel: AuthViewModel = hiltViewModel(),
     appViewModel: AppViewModel = hiltViewModel()
 ) {
+    val authState = authViewModel.uiState
+    val appState = appViewModel.state
+
     LaunchedEffect(Unit) { authViewModel.refreshAuthState() }
 
-    LaunchedEffect(authViewModel.uiState.isAuthenticated) {
-        if (authViewModel.uiState.isAuthenticated) {
+    LaunchedEffect(authState.isAuthenticated) {
+        if (authState.isAuthenticated) {
             appViewModel.loadMyProfile()
         } else {
             appViewModel.clear()
         }
     }
 
-    LaunchedEffect(authViewModel.uiState.isAuthenticated, appViewModel.state.me) {
-        if (!authViewModel.uiState.isAuthenticated) return@LaunchedEffect
-        val me = appViewModel.state.me ?: return@LaunchedEffect
+    LaunchedEffect(authState.isAuthenticated, appState.me) {
+        if (!authState.isAuthenticated) return@LaunchedEffect
+        val me = appState.me ?: return@LaunchedEffect
 
         // If we are already in one of the flows, don't auto-navigate away
         val current = navController.currentDestination?.route
-        if (current in setOf(Routes.ProtectedFlow, Routes.MonitorFlow, Routes.Profile)) return@LaunchedEffect
+        if (current in setOf(Routes.PROTECTED_FLOW, Routes.MONITOR_FLOW, Routes.PROFILE)) return@LaunchedEffect
 
         val hasProtected = me.roles.contains("Protected")
         val hasMonitor = me.roles.contains("Monitor")
 
         when {
             hasProtected && !hasMonitor ->
-                navController.navigate(Routes.ProtectedFlow) { popUpTo(0) }
+                navController.navigate(Routes.PROTECTED_FLOW) { popUpTo(0) }
             hasMonitor && !hasProtected ->
-                navController.navigate(Routes.MonitorFlow) { popUpTo(0) }
+                navController.navigate(Routes.MONITOR_FLOW) { popUpTo(0) }
             else ->
-                navController.navigate(Routes.RolePicker) { popUpTo(0) }
+                navController.navigate(Routes.ROLE_PICKER) { popUpTo(0) }
         }
     }
 
@@ -111,13 +114,13 @@ private fun SafetYSecApp(
 
     val showBack = navController.previousBackStackEntry != null &&
             currentRoute !in setOf(
-        Routes.Login,
-        Routes.RolePicker,
-        Routes.ProtectedFlow,
-        Routes.MonitorFlow
+        Routes.LOGIN,
+        Routes.ROLE_PICKER,
+        Routes.PROTECTED_FLOW,
+        Routes.MONITOR_FLOW
     )
 
-    val isAuthenticated = authViewModel.uiState.isAuthenticated
+    val isAuthenticated = authState.isAuthenticated
 
     Scaffold(
         topBar = {
@@ -127,17 +130,17 @@ private fun SafetYSecApp(
                 onBack = { navController.popBackStack() },
                 onLogout = {
                     authViewModel.logout()
-                    navController.navigate(Routes.Login) { popUpTo(0) }
+                    navController.navigate(Routes.LOGIN) { popUpTo(0) }
                 },
                 onProfile = {
-                    navController.navigate(Routes.Profile)
+                    navController.navigate(Routes.PROFILE)
                 }
             )
         },
         modifier = Modifier.fillMaxSize()
     ) { innerPadding ->
 
-        val start = if (isAuthenticated) Routes.RolePicker else Routes.Login
+        val start = if (isAuthenticated) Routes.ROLE_PICKER else Routes.LOGIN
 
         NavHost(
             navController = navController,
@@ -146,61 +149,61 @@ private fun SafetYSecApp(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            composable(Routes.Login) {
+            composable(Routes.LOGIN) {
                 LoginScreen(
                     viewModel = authViewModel,
-                    onNavigateToRegistration = { navController.navigate(Routes.Register) },
-                    onNavigateToResetPassword = { navController.navigate(Routes.ResetPassword) },
+                    onNavigateToRegistration = { navController.navigate(Routes.REGISTER) },
+                    onNavigateToResetPassword = { navController.navigate(Routes.RESET_PASSWORD) },
                     onLoginSuccess = {}
                 )
             }
 
-            composable(Routes.Register) {
+            composable(Routes.REGISTER) {
                 RegistrationScreen(
                     viewModel = authViewModel,
                     onNavigateToLogin = {
-                        navController.navigate(Routes.Login) {
-                            popUpTo(Routes.Register) { inclusive = true }
+                        navController.navigate(Routes.LOGIN) {
+                            popUpTo(Routes.REGISTER) { inclusive = true }
                         }
                     }
                 )
             }
 
-            composable(Routes.ResetPassword) {
+            composable(Routes.RESET_PASSWORD) {
                 PasswordResetScreen(
                     authViewModel = authViewModel,
                     onDone = { navController.popBackStack() }
                 )
             }
 
-            composable(Routes.Profile) {
+            composable(Routes.PROFILE) {
                 ProfileScreen(
                     onNavigateBack = { navController.popBackStack() },
                     viewModel = authViewModel
                 )
             }
 
-            composable(Routes.RolePicker) {
+            composable(Routes.ROLE_PICKER) {
                 RolePickerScreen(
-                    onGoProtected = { navController.navigate(Routes.ProtectedFlow) { popUpTo(0) } },
-                    onGoMonitor = { navController.navigate(Routes.MonitorFlow) { popUpTo(0) } }
+                    onGoProtected = { navController.navigate(Routes.PROTECTED_FLOW) { popUpTo(0) } },
+                    onGoMonitor = { navController.navigate(Routes.MONITOR_FLOW) { popUpTo(0) } }
                 )
             }
 
-            composable(Routes.ProtectedFlow) {
+            composable(Routes.PROTECTED_FLOW) {
                 ProtectedFlow(
                     appViewModel = appViewModel,
                     onSwitchToMonitor = {
-                        navController.navigate(Routes.MonitorFlow) { popUpTo(0) }
+                        navController.navigate(Routes.MONITOR_FLOW) { popUpTo(0) }
                     }
                 )
             }
 
-            composable(Routes.MonitorFlow) {
+            composable(Routes.MONITOR_FLOW) {
                 MonitorFlow(
                     appViewModel = appViewModel,
                     onSwitchToProtected = {
-                        navController.navigate(Routes.ProtectedFlow) { popUpTo(0) }
+                        navController.navigate(Routes.PROTECTED_FLOW) { popUpTo(0) }
                     }
                 )
             }
@@ -222,17 +225,17 @@ private fun AppTopBar(
         navigationIcon = {
             if (showBack) {
                 IconButton(onClick = onBack) {
-                    Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                 }
             }
         },
         actions = {
             if (isAuthenticated) {
                 IconButton(onClick = onProfile) {
-                    Icon(Icons.Filled.Person, contentDescription = "Profile")
+                    Icon(Icons.Default.Person, contentDescription = "Profile")
                 }
                 IconButton(onClick = onLogout) {
-                    Icon(Icons.Filled.Logout, contentDescription = "Logout")
+                    Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = "Logout")
                 }
             }
         }

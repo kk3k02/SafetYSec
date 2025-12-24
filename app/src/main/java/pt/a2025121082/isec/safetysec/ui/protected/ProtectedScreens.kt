@@ -21,8 +21,6 @@ import pt.a2025121082.isec.safetysec.viewmodel.AuthViewModel
 
 /**
  * Protected history screen.
- *
- * Displays a list of alerts received/triggered by the Protected user.
  */
 @Composable
 fun ProtectedHistoryScreen(vm: AppViewModel) {
@@ -113,12 +111,30 @@ fun ProtectedWindowsScreen(vm: AppViewModel) {
 }
 
 /**
- * Screen for managing linked Monitors and authorizing requested monitoring rules.
+ * Screen for managing linked Monitors and authorizing monitoring permissions.
  */
 @Composable
 fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
     val st = vm.state
     var showOtpDialog by remember { mutableStateOf(false) }
+
+    // State for Pending Request Dialog
+    var pendingRequestMonitor by remember { mutableStateOf<Pair<User, List<RuleType>>?>(null) }
+
+    // Detect if any monitor has a "requested" list that isn't fully in "authorizedTypes"
+    LaunchedEffect(st.monitorRuleBundles, st.myLinkedMonitors) {
+        st.myLinkedMonitors.forEach { monitor ->
+            val bundle = st.monitorRuleBundles.find { it.monitorId == monitor.uid }
+            if (bundle != null && bundle.requested.isNotEmpty()) {
+                val requestedTypes = bundle.requested.map { it.type }
+                // If there are requested types not yet authorized
+                val notYetAuthorized = requestedTypes.filter { !bundle.authorizedTypes.contains(it) }
+                if (notYetAuthorized.isNotEmpty()) {
+                    pendingRequestMonitor = monitor to requestedTypes
+                }
+            }
+        }
+    }
 
     // When a new OTP is generated, show the dialog automatically
     LaunchedEffect(st.myOtp) {
@@ -134,7 +150,7 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         item {
-            Text("Monitors & Authorizations", style = MaterialTheme.typography.titleLarge)
+            Text("Monitors & Permissions", style = MaterialTheme.typography.titleLarge)
             Spacer(Modifier.height(8.dp))
 
             // OTP generation
@@ -157,59 +173,53 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
             }
         } else {
             items(st.myLinkedMonitors) { monitor ->
-                MonitorStatusCard(monitor)
-            }
-        }
-
-        // --- Rule Authorizations Section ---
-        item {
-            Text("Rule Requests", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-        }
-        if (st.monitorRuleBundles.isEmpty()) {
-            item {
-                Text("No pending rule requests.", style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
-            }
-        } else {
-            items(st.monitorRuleBundles) { bundle ->
-                Card(Modifier.fillMaxWidth()) {
+                // Find or create rule bundle for this monitor
+                val bundle = st.monitorRuleBundles.find { it.monitorId == monitor.uid }
+                
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                ) {
                     Column(Modifier.padding(12.dp)) {
-                        Text("Monitor: ${bundle.monitorId}", fontWeight = FontWeight.Bold)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.size(40.dp))
+                            Spacer(Modifier.width(12.dp))
+                            Column {
+                                Text(monitor.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                Text(monitor.email, style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                        
+                        Divider(Modifier.padding(vertical = 12.dp))
+                        Text("Grant Permissions:", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
 
-                        Text("Requested rules:", style = MaterialTheme.typography.bodySmall)
-                        bundle.requested.forEach { r ->
-                            Text("- ${r.type.displayName()}", style = MaterialTheme.typography.bodySmall)
+                        val authorized = remember(monitor.uid, bundle?.authorizedTypes) {
+                            mutableStateListOf<RuleType>().apply { 
+                                addAll(bundle?.authorizedTypes ?: emptyList()) 
+                            }
                         }
 
-                        Spacer(Modifier.height(8.dp))
-                        Text("Authorize:")
-
-                        val authorized = remember(bundle.monitorId) {
-                            mutableStateListOf<RuleType>().apply { addAll(bundle.authorizedTypes) }
-                        }
-
-                        RuleType.values().forEach { type ->
-                            val requested = bundle.requested.any { it.type == type && it.enabled }
+                        RuleType.entries.forEach { type ->
                             Row(
                                 Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(type.displayName() + if (!requested) " (not requested)" else "")
+                                Text(text = type.displayName(), style = MaterialTheme.typography.bodyMedium)
                                 Switch(
                                     checked = authorized.contains(type),
                                     onCheckedChange = { on ->
                                         if (on) authorized.add(type) else authorized.remove(type)
-                                    },
-                                    enabled = requested
+                                    }
                                 )
                             }
                         }
 
                         Spacer(Modifier.height(8.dp))
                         Button(
-                            onClick = { vm.saveAuthorizations(bundle.monitorId, authorized.toList()) },
+                            onClick = { vm.saveAuthorizations(monitor.uid, authorized.toList()) },
                             modifier = Modifier.fillMaxWidth()
-                        ) { Text("Save Authorizations") }
+                        ) { Text("Save Permissions") }
                     }
                 }
             }
@@ -249,22 +259,39 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
             }
         )
     }
-}
 
-@Composable
-fun MonitorStatusCard(monitor: User) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-    ) {
-        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.size(40.dp))
-            Spacer(Modifier.width(12.dp))
-            Column {
-                Text(monitor.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Text(monitor.email, style = MaterialTheme.typography.bodySmall)
+    // --- NEW: Pending Request Dialog ---
+    pendingRequestMonitor?.let { (monitor, requestedTypes) ->
+        AlertDialog(
+            onDismissRequest = { pendingRequestMonitor = null },
+            title = { Text("New Access Request") },
+            text = {
+                Column {
+                    Text("${monitor.name} is requesting access to the following rules:")
+                    Spacer(Modifier.height(8.dp))
+                    requestedTypes.forEach { type ->
+                        Text("• ${type.displayName()}", fontWeight = FontWeight.SemiBold)
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    Text("Do you want to grant these permissions?", style = MaterialTheme.typography.bodySmall)
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        vm.saveAuthorizations(monitor.uid, requestedTypes)
+                        pendingRequestMonitor = null
+                    }
+                ) {
+                    Text("Accept All")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingRequestMonitor = null }) {
+                    Text("Decide Later")
+                }
             }
-        }
+        )
     }
 }
 
