@@ -10,6 +10,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
+/**
+ * Simple role/mode selection screen.
+ *
+ * Lets the user choose which UI flow to open:
+ * - Protected mode
+ * - Monitor mode
+ *
+ * The actual navigation logic is provided by the caller via callbacks.
+ */
 @Composable
 fun RolePickerScreen(
     onGoProtected: () -> Unit,
@@ -17,21 +26,18 @@ fun RolePickerScreen(
 ) {
     Column(Modifier.padding(16.dp)) {
         Text("Choose mode")
-
         Spacer(Modifier.padding(12.dp))
 
+        // Navigate to Protected flow
         Button(onClick = onGoProtected, modifier = Modifier.fillMaxWidth()) {
             Text("Protected")
         }
 
         Spacer(Modifier.padding(8.dp))
 
+        // Navigate to Monitor flow
         Button(onClick = onGoMonitor, modifier = Modifier.fillMaxWidth()) {
             Text("Monitor")
         }
-
-        Spacer(Modifier.padding(8.dp))
-
-        Text("Tip: one user can have both profiles. This only changes what UI you see now.")
     }
 }
