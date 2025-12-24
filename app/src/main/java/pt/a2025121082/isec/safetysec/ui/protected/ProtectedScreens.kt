@@ -1,31 +1,12 @@
 package pt.a2025121082.isec.safetysec.ui.protected
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.Divider
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Switch
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -42,8 +23,8 @@ import pt.a2025121082.isec.safetysec.viewmodel.AuthViewModel
 fun ProtectedHistoryScreen(vm: AppViewModel) {
     val st = vm.state
     Column(Modifier.padding(16.dp)) {
-        Text("History (Protected)")
-        Spacer(Modifier.height(8.dp))
+        Text("History (Protected)", style = MaterialTheme.typography.titleLarge)
+        Spacer(Modifier.height(16.dp))
 
         LazyColumn {
             items(st.myAlerts) { a ->
@@ -60,10 +41,6 @@ fun ProtectedHistoryScreen(vm: AppViewModel) {
 
 /**
  * Screen for managing time windows when monitoring rules are allowed to be active.
- *
- * This is currently a simplified UI that:
- * - shows existing time windows
- * - lets the user add a new window using basic text inputs
  */
 @Composable
 fun ProtectedWindowsScreen(vm: AppViewModel) {
@@ -73,11 +50,11 @@ fun ProtectedWindowsScreen(vm: AppViewModel) {
     var end by remember { mutableStateOf("18") }
 
     Column(Modifier.padding(16.dp)) {
-        Text("Time windows")
-        Spacer(Modifier.height(8.dp))
+        Text("Time windows", style = MaterialTheme.typography.titleLarge)
+        Spacer(Modifier.height(16.dp))
 
         // Existing windows
-        LazyColumn {
+        LazyColumn(modifier = Modifier.weight(1f)) {
             items(st.timeWindows) { w ->
                 Card(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
                     androidx.compose.material3.ListItem(
@@ -91,7 +68,7 @@ fun ProtectedWindowsScreen(vm: AppViewModel) {
         Spacer(Modifier.height(12.dp))
 
         // Add new window (simple prototype UI)
-        Text("Add window (simple)")
+        Text("Add window", style = MaterialTheme.typography.titleMedium)
         OutlinedTextField(
             value = days,
             onValueChange = { days = it },
@@ -111,10 +88,9 @@ fun ProtectedWindowsScreen(vm: AppViewModel) {
             modifier = Modifier.fillMaxWidth()
         )
 
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(16.dp))
         Button(
             onClick = {
-                // Parse input like "1,2,3,4,5" and keep only valid day numbers (1..7)
                 val parsedDays = days
                     .split(",")
                     .mapNotNull { it.trim().toIntOrNull() }
@@ -133,21 +109,16 @@ fun ProtectedWindowsScreen(vm: AppViewModel) {
 
 /**
  * Screen for managing linked Monitors and authorizing requested monitoring rules.
- *
- * Features:
- * - Generates an OTP code that can be shared with a Monitor to establish an association
- * - Displays rule requests made by Monitors
- * - Allows the Protected user to authorize requested rule types per Monitor
  */
 @Composable
 fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
     val st = vm.state
 
     Column(Modifier.padding(16.dp)) {
-        Text("Monitors & authorizations")
-        Spacer(Modifier.height(8.dp))
+        Text("Monitors & Authorizations", style = MaterialTheme.typography.titleLarge)
+        Spacer(Modifier.height(16.dp))
 
-        // OTP generation (Protected -> Monitor association)
+        // OTP generation
         Button(
             onClick = { vm.generateOtp() },
             modifier = Modifier.fillMaxWidth(),
@@ -159,7 +130,15 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
         // Show generated OTP
         st.myOtp?.let {
             Spacer(Modifier.height(8.dp))
-            Text("OTP: $it")
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+            ) {
+                Column(Modifier.padding(16.dp)) {
+                    Text("Your OTP Code:", style = MaterialTheme.typography.labelMedium)
+                    Text(it, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                }
+            }
         }
 
         Spacer(Modifier.height(12.dp))
@@ -169,22 +148,20 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
             items(st.monitorRuleBundles) { bundle ->
                 Card(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
                     Column(Modifier.padding(12.dp)) {
-                        Text("Monitor: ${bundle.monitorId}")
+                        Text("Monitor: ${bundle.monitorId}", fontWeight = FontWeight.Bold)
 
-                        Text("Requested:")
+                        Text("Requested rules:", style = MaterialTheme.typography.bodySmall)
                         bundle.requested.forEach { r ->
-                            Text("- ${r.type.displayName()}")
+                            Text("- ${r.type.displayName()}", style = MaterialTheme.typography.bodySmall)
                         }
 
                         Spacer(Modifier.height(8.dp))
                         Text("Authorize:")
 
-                        // Local mutable list of authorized rule types for this monitor (UI state)
                         val authorized = remember(bundle.monitorId) {
                             mutableStateListOf<RuleType>().apply { addAll(bundle.authorizedTypes) }
                         }
 
-                        // Show all rule types; toggles are enabled only if the type was requested
                         RuleType.values().forEach { type ->
                             val requested = bundle.requested.any { it.type == type && it.enabled }
                             Row(
@@ -206,7 +183,7 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
                         Button(
                             onClick = { vm.saveAuthorizations(bundle.monitorId, authorized.toList()) },
                             modifier = Modifier.fillMaxWidth()
-                        ) { Text("Save authorizations") }
+                        ) { Text("Save Authorizations") }
                     }
                 }
             }
@@ -216,10 +193,7 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
 
 /**
  * Protected profile screen.
- *
- * Shows account information and allows:
- * - updating the alert cancel PIN
- * - switching to the Monitor UI flow
+ * Consistent UI with MonitorProfileScreen.
  */
 @Composable
 fun ProtectedProfileScreen(
@@ -238,18 +212,20 @@ fun ProtectedProfileScreen(
     }
 
     Column(Modifier.padding(16.dp)) {
-        Text("Protected profile")
+        Text("Account Settings", style = MaterialTheme.typography.titleLarge)
+        Spacer(Modifier.height(16.dp))
+
+        // Account info card
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp)) {
+                Text("Name: ${authSt.accountName ?: "-"}", style = MaterialTheme.typography.bodyLarge)
+                Text("Email: ${authSt.accountEmail ?: "-"}", style = MaterialTheme.typography.bodyLarge)
+            }
+        }
+
+        Spacer(Modifier.height(24.dp))
+        Text("Security Settings", style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(8.dp))
-
-        // Account info visible in Profile tab
-        Text("Account info", style = MaterialTheme.typography.titleMedium)
-        Spacer(Modifier.height(6.dp))
-        Text("Name: ${authSt.accountName ?: "-"}")
-        Text("Email: ${authSt.accountEmail ?: "-"}")
-
-        Spacer(Modifier.height(12.dp))
-        Divider()
-        Spacer(Modifier.height(12.dp))
 
         // Alert cancel PIN input
         OutlinedTextField(
@@ -260,40 +236,39 @@ fun ProtectedProfileScreen(
             modifier = Modifier.fillMaxWidth()
         )
 
-        Spacer(Modifier.height(8.dp))
-        Button(onClick = { vm.updateCancelPin(pin) }, modifier = Modifier.fillMaxWidth()) {
-            Text("Save PIN")
+        Spacer(Modifier.height(12.dp))
+        Button(
+            onClick = { vm.updateCancelPin(pin) },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Update PIN")
         }
 
-        Spacer(Modifier.height(12.dp))
-        Button(onClick = onSwitchToMonitor, modifier = Modifier.fillMaxWidth()) {
-            Text("Switch to Monitor UI")
+        Spacer(Modifier.height(24.dp))
+        Button(
+            onClick = onSwitchToMonitor,
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+        ) {
+            Text("Switch to Monitor Mode")
         }
 
         // Show errors/messages if any
-        authSt.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        authSt.message?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
-        st.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        authSt.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp)) }
+        authSt.message?.let { Text(it, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 8.dp)) }
+        st.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp)) }
     }
 }
 
-/**
- * Cancel dialog shown after an alert is triggered.
- *
- * Project requirement: Protected user has a 10-second window to enter a PIN and cancel the alert.
- * The dialog stays on screen until the countdown finishes or the user successfully cancels.
- */
 @Composable
 fun ProtectedCancelAlertDialog(vm: AppViewModel) {
     val st = vm.state
     if (!st.isCancelWindowOpen) return
 
-    // Local state for the PIN typed by the user inside the dialog.
     var typed by remember { mutableStateOf("") }
 
     AlertDialog(
-        // Do not allow dismiss until the time window ends (requirement).
-        onDismissRequest = { /* keep until time ends */ },
+        onDismissRequest = { },
         title = { Text("Alert triggered") },
         text = {
             Column {
@@ -312,7 +287,6 @@ fun ProtectedCancelAlertDialog(vm: AppViewModel) {
             Button(onClick = { vm.tryCancelAlert(typed) }) { Text("Cancel") }
         },
         dismissButton = {
-            // Intentionally does nothing; user can wait for the timer to expire.
             TextButton(onClick = {}) { Text("Wait") }
         }
     )
