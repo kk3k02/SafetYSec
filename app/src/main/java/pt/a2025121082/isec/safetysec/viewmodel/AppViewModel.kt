@@ -10,8 +10,6 @@ import com.google.firebase.firestore.GeoPoint
 import com.google.firebase.firestore.Query
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import pt.a2025121082.isec.safetysec.data.model.Alert
@@ -43,6 +41,7 @@ data class AppUiState(
     // Monitor data
     val monitorAlerts: List<Alert> = emptyList(),
     val linkedProtectedUsers: List<User> = emptyList(),
+    val rulesForSelectedProtected: MonitorRulesBundle? = null,
 
     // Alert cancel window state
     val isCancelWindowOpen: Boolean = false,
@@ -98,7 +97,6 @@ class AppViewModel @Inject constructor(
     private fun startMonitoringDashboard(monitorUid: String) {
         alertsListenerJob?.cancel()
         alertsListenerJob = viewModelScope.launch {
-            // 1. Listen for alerts assigned to this monitor
             db.collection("users").document(monitorUid)
                 .collection("alerts")
                 .orderBy("timestamp", Query.Direction.DESCENDING)
@@ -109,13 +107,27 @@ class AppViewModel @Inject constructor(
                     state = state.copy(monitorAlerts = alerts)
                 }
 
-            // 2. Load profiles of linked protected users to show their status
             val me = authRepo.getUserProfile(monitorUid)
             val linkedIds = me.protectedUsers
             if (linkedIds.isNotEmpty()) {
                 val users = linkedIds.map { id -> authRepo.getUserProfile(id) }
                 state = state.copy(linkedProtectedUsers = users)
             }
+        }
+    }
+
+    /**
+     * Loads the rules configuration and authorizations for a specific Protected user.
+     * This allows the Monitor to see what the Protected user has agreed to.
+     */
+    fun loadRulesForProtected(protectedUid: String) = viewModelScope.launch {
+        val me = state.me ?: return@launch
+        try {
+            val bundles = monitoringRepo.getRulesForProtected(protectedUid)
+            val myBundle = bundles.find { it.monitorId == me.uid }
+            state = state.copy(rulesForSelectedProtected = myBundle)
+        } catch (t: Throwable) {
+            state = state.copy(error = t.message)
         }
     }
 
@@ -159,6 +171,7 @@ class AppViewModel @Inject constructor(
                 rules = rules
             )
             state = state.copy(isLoading = false)
+            loadRulesForProtected(protectedUid) // Refresh after update
         } catch (t: Throwable) {
             state = state.copy(isLoading = false, error = t.message)
         }
