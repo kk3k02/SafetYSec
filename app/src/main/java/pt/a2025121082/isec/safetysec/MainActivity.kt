@@ -18,11 +18,8 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.navigation.NavDestination.Companion.hierarchy
-import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -36,79 +33,133 @@ import pt.a2025121082.isec.safetysec.ui.flows.ProtectedFlow
 import pt.a2025121082.isec.safetysec.ui.screens.PasswordResetScreen
 import pt.a2025121082.isec.safetysec.ui.screens.RolePickerScreen
 import pt.a2025121082.isec.safetysec.ui.theme.SafetYSecTheme
+import pt.a2025121082.isec.safetysec.viewmodel.AppViewModel
 import pt.a2025121082.isec.safetysec.viewmodel.AuthViewModel
 
+/**
+ * Main entry Activity for the app.
+ *
+ * - Enables edge-to-edge layout
+ * - Hosts the Compose UI tree
+ * - Uses Hilt for dependency injection (@AndroidEntryPoint)
+ */
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-
-        setContent {
-            SafetYSecTheme {
-                SafetYSecApp()
-            }
-        }
+        setContent { SafetYSecTheme { SafetYSecApp() } }
     }
 }
 
+/**
+ * Navigation route constants used by the root NavHost.
+ */
 private object Routes {
     // Auth
     const val Login = "login"
     const val Register = "register"
     const val ResetPassword = "reset_password"
 
-    // After login
+    // Role + flows
     const val RolePicker = "role_picker"
-
-    // Flows (each contains its own bottom-nav)
     const val ProtectedFlow = "protected_flow"
     const val MonitorFlow = "monitor_flow"
 }
 
+/**
+ * Root composable of the application.
+ *
+ * Responsibilities:
+ * - Refresh auth status on app start (including email verification)
+ * - Load Firestore profile after authentication (roles, associations)
+ * - Auto-route to the correct flow based on roles:
+ *   - Protected only -> ProtectedFlow
+ *   - Monitor only -> MonitorFlow
+ *   - Both roles -> RolePicker
+ * - Hosts the main NavHost for auth + role flows
+ * - Provides a top app bar with optional Back + Logout actions
+ */
 @Composable
 private fun SafetYSecApp(
     navController: NavHostController = rememberNavController(),
-    authViewModel: AuthViewModel = hiltViewModel()
+    authViewModel: AuthViewModel = hiltViewModel(),
+    appViewModel: AppViewModel = hiltViewModel()
 ) {
+    // Refresh MFA/auth state when the app starts (emailVerified might have changed).
     LaunchedEffect(Unit) { authViewModel.refreshAuthState() }
 
-    val isAuthenticated = authViewModel.uiState.isAuthenticated
-    val startDestination = remember(isAuthenticated) {
-        if (isAuthenticated) Routes.RolePicker else Routes.Login
+    // When authenticated -> load Firestore profile; otherwise reset app state.
+    LaunchedEffect(authViewModel.uiState.isAuthenticated) {
+        if (authViewModel.uiState.isAuthenticated) {
+            appViewModel.loadMyProfile()
+        } else {
+            appViewModel.clear()
+        }
     }
 
+    // Auto-route once profile is loaded (role-based navigation).
+    LaunchedEffect(authViewModel.uiState.isAuthenticated, appViewModel.state.me) {
+        if (!authViewModel.uiState.isAuthenticated) return@LaunchedEffect
+        val me = appViewModel.state.me ?: return@LaunchedEffect
+
+        val hasProtected = me.roles.contains("Protected")
+        val hasMonitor = me.roles.contains("Monitor")
+
+        when {
+            hasProtected && !hasMonitor ->
+                navController.navigate(Routes.ProtectedFlow) { popUpTo(0) }
+            hasMonitor && !hasProtected ->
+                navController.navigate(Routes.MonitorFlow) { popUpTo(0) }
+            hasProtected && hasMonitor ->
+                navController.navigate(Routes.RolePicker) { popUpTo(0) }
+            else ->
+                navController.navigate(Routes.RolePicker) { popUpTo(0) }
+        }
+    }
+
+    // Track current route to decide if the Back button should be shown.
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
 
-    val canNavigateBack = navController.previousBackStackEntry != null &&
-            currentRoute != Routes.Login &&
-            currentRoute != Routes.RolePicker &&
-            currentRoute != Routes.ProtectedFlow &&
-            currentRoute != Routes.MonitorFlow
+    /**
+     * Show a Back button when:
+     * - there is a previous destination in the back stack
+     * - we are not on the "root" screens (login / role picker / main flows)
+     */
+    val showBack = navController.previousBackStackEntry != null &&
+            currentRoute !in setOf(
+        Routes.Login,
+        Routes.RolePicker,
+        Routes.ProtectedFlow,
+        Routes.MonitorFlow
+    )
+
+    /** Whether the user is currently authenticated. */
+    val isAuthenticated = authViewModel.uiState.isAuthenticated
 
     Scaffold(
         topBar = {
             AppTopBar(
-                title = "SafetYSec",
-                showBack = canNavigateBack,
-                onBack = { navController.popBackStack() },
+                showBack = showBack,
                 isAuthenticated = isAuthenticated,
+                onBack = { navController.popBackStack() },
                 onLogout = {
                     authViewModel.logout()
-                    navController.navigate(Routes.Login) {
-                        popUpTo(0)
-                        launchSingleTop = true
-                    }
+                    // Clear the entire back stack and return to Login.
+                    navController.navigate(Routes.Login) { popUpTo(0) }
                 }
             )
         },
         modifier = Modifier.fillMaxSize()
     ) { innerPadding ->
 
+        // Initial destination for the root NavHost depends on auth state.
+        val start = if (isAuthenticated) Routes.RolePicker else Routes.Login
+
         NavHost(
             navController = navController,
-            startDestination = startDestination,
+            startDestination = start,
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
@@ -117,13 +168,10 @@ private fun SafetYSecApp(
                 LoginScreen(
                     viewModel = authViewModel,
                     onNavigateToRegistration = { navController.navigate(Routes.Register) },
+                    onNavigateToResetPassword = { navController.navigate(Routes.ResetPassword) },
                     onLoginSuccess = {
-                        navController.navigate(Routes.RolePicker) {
-                            popUpTo(Routes.Login) { inclusive = true }
-                            launchSingleTop = true
-                        }
-                    },
-                    onNavigateToResetPassword = { navController.navigate(Routes.ResetPassword) }
+                        // No-op: role-based routing happens via LaunchedEffect after profile load.
+                    }
                 )
             }
 
@@ -133,7 +181,6 @@ private fun SafetYSecApp(
                     onNavigateToLogin = {
                         navController.navigate(Routes.Login) {
                             popUpTo(Routes.Register) { inclusive = true }
-                            launchSingleTop = true
                         }
                     }
                 )
@@ -148,58 +195,25 @@ private fun SafetYSecApp(
 
             composable(Routes.RolePicker) {
                 RolePickerScreen(
-                    onGoProtected = {
-                        navController.navigate(Routes.ProtectedFlow) {
-                            popUpTo(Routes.RolePicker) { inclusive = true }
-                            launchSingleTop = true
-                        }
-                    },
-                    onGoMonitor = {
-                        navController.navigate(Routes.MonitorFlow) {
-                            popUpTo(Routes.RolePicker) { inclusive = true }
-                            launchSingleTop = true
-                        }
-                    }
+                    onGoProtected = { navController.navigate(Routes.ProtectedFlow) { popUpTo(0) } },
+                    onGoMonitor = { navController.navigate(Routes.MonitorFlow) { popUpTo(0) } }
                 )
             }
 
-            // Nested flows with their own bottom navigation
             composable(Routes.ProtectedFlow) {
                 ProtectedFlow(
-                    onLogout = {
-                        authViewModel.logout()
-                        navController.navigate(Routes.Login) {
-                            popUpTo(0)
-                            launchSingleTop = true
-                        }
-                    },
+                    appViewModel = appViewModel,
                     onSwitchToMonitor = {
-                        navController.navigate(Routes.MonitorFlow) {
-                            popUpTo(navController.graph.findStartDestination().id) {
-                                inclusive = false
-                            }
-                            launchSingleTop = true
-                        }
+                        navController.navigate(Routes.MonitorFlow) { popUpTo(0) }
                     }
                 )
             }
 
             composable(Routes.MonitorFlow) {
                 MonitorFlow(
-                    onLogout = {
-                        authViewModel.logout()
-                        navController.navigate(Routes.Login) {
-                            popUpTo(0)
-                            launchSingleTop = true
-                        }
-                    },
+                    appViewModel = appViewModel,
                     onSwitchToProtected = {
-                        navController.navigate(Routes.ProtectedFlow) {
-                            popUpTo(navController.graph.findStartDestination().id) {
-                                inclusive = false
-                            }
-                            launchSingleTop = true
-                        }
+                        navController.navigate(Routes.ProtectedFlow) { popUpTo(0) }
                     }
                 )
             }
@@ -207,17 +221,22 @@ private fun SafetYSecApp(
     }
 }
 
+/**
+ * Top app bar shown across the app.
+ *
+ * - Shows an optional Back button depending on navigation state
+ * - Shows a Logout action only when the user is authenticated
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AppTopBar(
-    title: String,
     showBack: Boolean,
-    onBack: () -> Unit,
     isAuthenticated: Boolean,
+    onBack: () -> Unit,
     onLogout: () -> Unit
 ) {
     TopAppBar(
-        title = { Text(title) },
+        title = { Text("SafetYSec") },
         navigationIcon = {
             if (showBack) {
                 IconButton(onClick = onBack) {

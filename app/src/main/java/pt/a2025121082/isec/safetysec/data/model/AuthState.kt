@@ -7,18 +7,24 @@ package pt.a2025121082.isec.safetysec.data.model
  */
 data class AuthState(
 
-    /** True when an authentication-related operation is in progress */
+    /** True when an authentication-related operation is in progress. */
     val isLoading: Boolean = false,
 
-    /** True when the registration process finished successfully */
+    /** True when the registration process finished successfully. */
     val isRegistrationSuccessful: Boolean = false,
 
-    /** True when the user is currently authenticated (logged in) */
+    /** True when the user is currently authenticated (logged in). */
     val isAuthenticated: Boolean = false,
 
-    /** Optional error message to display in the UI */
+    /** Optional error message to display in the UI. */
     val error: String? = null,
 
-    /** Optional informational message to display in the UI (e.g., success confirmation) */
-    val message: String? = null
+    /** Optional informational message to display in the UI (e.g., success confirmation). */
+    val message: String? = null,
+
+    /** Optional display name of the currently authenticated account (if available). */
+    val accountName: String? = null,
+
+    /** Optional email of the currently authenticated account (if available). */
+    val accountEmail: String? = null
 )
