@@ -41,5 +41,11 @@ data class User(
      * One-time association code (OTP) used to link users.
      * Generated on demand and invalid after being used.
      */
-    val associationCode: String? = null
+    val associationCode: String? = null,
+
+    /**
+     * Timestamp when the association code was created.
+     * Used to handle code expiration (TTL).
+     */
+    val associationCodeCreatedAt: Long? = null
 )

@@ -3,6 +3,7 @@ package pt.a2025121082.isec.safetysec.ui.monitor
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -11,6 +12,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import pt.a2025121082.isec.safetysec.data.model.*
@@ -135,6 +137,14 @@ fun AlertItem(alert: Alert, sdf: SimpleDateFormat) {
 fun MonitorLinkScreen(vm: AppViewModel) {
     val st = vm.state
     var code by remember { mutableStateOf("") }
+    var showSuccessDialog by remember { mutableStateOf(false) }
+
+    // Observe linking success state
+    LaunchedEffect(st.isLinkingSuccessful) {
+        if (st.isLinkingSuccessful) {
+            showSuccessDialog = true
+        }
+    }
 
     Column(Modifier.padding(16.dp)) {
         Text("Link with Protected (OTP)", style = MaterialTheme.typography.titleLarge)
@@ -142,9 +152,10 @@ fun MonitorLinkScreen(vm: AppViewModel) {
 
         OutlinedTextField(
             value = code,
-            onValueChange = { code = it },
+            onValueChange = { if (it.length <= 6) code = it },
             label = { Text("6-digit code") },
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
         )
 
         Spacer(Modifier.height(16.dp))
@@ -156,6 +167,27 @@ fun MonitorLinkScreen(vm: AppViewModel) {
         ) { Text("Link Account") }
 
         st.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp)) }
+    }
+
+    // Success Dialog
+    if (showSuccessDialog) {
+        AlertDialog(
+            onDismissRequest = { 
+                showSuccessDialog = false
+                vm.consumeLinkingSuccess()
+            },
+            title = { Text("Success") },
+            text = { Text("Protected user successfully linked!") },
+            confirmButton = {
+                TextButton(onClick = { 
+                    showSuccessDialog = false
+                    vm.consumeLinkingSuccess()
+                    code = "" // Clear the field
+                }) {
+                    Text("OK")
+                }
+            }
+        )
     }
 }
 
@@ -262,7 +294,8 @@ fun MonitorRulesScreen(vm: AppViewModel) {
                         value = maxSpeed,
                         onValueChange = { maxSpeed = it },
                         label = { Text("Max speed (km/h)") },
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                     )
                 }
                 if (inactivity) {
@@ -270,16 +303,35 @@ fun MonitorRulesScreen(vm: AppViewModel) {
                         value = inactMin,
                         onValueChange = { inactMin = it },
                         label = { Text("Inactivity minutes") },
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                     )
                 }
                 if (geofence) {
                     Text("Geofence Area", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 8.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedTextField(value = geoLat, onValueChange = { geoLat = it }, label = { Text("Lat") }, modifier = Modifier.weight(1f))
-                        OutlinedTextField(value = geoLng, onValueChange = { geoLng = it }, label = { Text("Lng") }, modifier = Modifier.weight(1f))
+                        OutlinedTextField(
+                            value = geoLat,
+                            onValueChange = { geoLat = it },
+                            label = { Text("Lat") },
+                            modifier = Modifier.weight(1f),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                        )
+                        OutlinedTextField(
+                            value = geoLng,
+                            onValueChange = { geoLng = it },
+                            label = { Text("Lng") },
+                            modifier = Modifier.weight(1f),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                        )
                     }
-                    OutlinedTextField(value = geoRadius, onValueChange = { geoRadius = it }, label = { Text("Radius (meters)") }, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(
+                        value = geoRadius,
+                        onValueChange = { geoRadius = it },
+                        label = { Text("Radius (meters)") },
+                        modifier = Modifier.fillMaxWidth(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
                 }
 
                 Spacer(Modifier.height(24.dp))

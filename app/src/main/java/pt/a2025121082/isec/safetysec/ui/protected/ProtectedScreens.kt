@@ -3,14 +3,19 @@ package pt.a2025121082.isec.safetysec.ui.protected
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import pt.a2025121082.isec.safetysec.data.model.RuleType
+import pt.a2025121082.isec.safetysec.data.model.User
 import pt.a2025121082.isec.safetysec.viewmodel.AppViewModel
 import pt.a2025121082.isec.safetysec.viewmodel.AuthViewModel
 
@@ -113,40 +118,60 @@ fun ProtectedWindowsScreen(vm: AppViewModel) {
 @Composable
 fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
     val st = vm.state
+    var showOtpDialog by remember { mutableStateOf(false) }
 
-    Column(Modifier.padding(16.dp)) {
-        Text("Monitors & Authorizations", style = MaterialTheme.typography.titleLarge)
-        Spacer(Modifier.height(16.dp))
-
-        // OTP generation
-        Button(
-            onClick = { vm.generateOtp() },
-            modifier = Modifier.fillMaxWidth(),
-            enabled = !st.isLoading
-        ) {
-            Text("Generate OTP (share with Monitor)")
+    // When a new OTP is generated, show the dialog automatically
+    LaunchedEffect(st.myOtp) {
+        if (st.myOtp != null) {
+            showOtpDialog = true
         }
+    }
 
-        // Show generated OTP
-        st.myOtp?.let {
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        item {
+            Text("Monitors & Authorizations", style = MaterialTheme.typography.titleLarge)
             Spacer(Modifier.height(8.dp))
-            Card(
+
+            // OTP generation
+            Button(
+                onClick = { vm.generateOtp() },
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+                enabled = !st.isLoading
             ) {
-                Column(Modifier.padding(16.dp)) {
-                    Text("Your OTP Code:", style = MaterialTheme.typography.labelMedium)
-                    Text(it, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-                }
+                Text("Generate OTP (share with Monitor)")
             }
         }
 
-        Spacer(Modifier.height(12.dp))
+        // --- Linked Monitors Section ---
+        item {
+            Text("Your Monitors", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        }
+        if (st.myLinkedMonitors.isEmpty()) {
+            item {
+                Text("No monitors linked.", style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
+            }
+        } else {
+            items(st.myLinkedMonitors) { monitor ->
+                MonitorStatusCard(monitor)
+            }
+        }
 
-        // Monitor rule bundles list
-        LazyColumn {
+        // --- Rule Authorizations Section ---
+        item {
+            Text("Rule Requests", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        }
+        if (st.monitorRuleBundles.isEmpty()) {
+            item {
+                Text("No pending rule requests.", style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
+            }
+        } else {
             items(st.monitorRuleBundles) { bundle ->
-                Card(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+                Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(12.dp)) {
                         Text("Monitor: ${bundle.monitorId}", fontWeight = FontWeight.Bold)
 
@@ -166,7 +191,8 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
                             val requested = bundle.requested.any { it.type == type && it.enabled }
                             Row(
                                 Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(type.displayName() + if (!requested) " (not requested)" else "")
                                 Switch(
@@ -186,6 +212,57 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
                         ) { Text("Save Authorizations") }
                     }
                 }
+            }
+        }
+    }
+
+    // OTP Display Dialog
+    if (showOtpDialog && st.myOtp != null) {
+        AlertDialog(
+            onDismissRequest = { showOtpDialog = false },
+            title = { Text("Association Code") },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text("Share this 6-digit code with your Monitor.")
+                    Spacer(Modifier.height(16.dp))
+                    Text(
+                        text = st.myOtp,
+                        style = MaterialTheme.typography.displayMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Code expires in 10 minutes.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.secondary
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showOtpDialog = false }) {
+                    Text("Close")
+                }
+            }
+        )
+    }
+}
+
+@Composable
+fun MonitorStatusCard(monitor: User) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.size(40.dp))
+            Spacer(Modifier.width(12.dp))
+            Column {
+                Text(monitor.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(monitor.email, style = MaterialTheme.typography.bodySmall)
             }
         }
     }

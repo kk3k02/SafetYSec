@@ -37,11 +37,13 @@ data class AppUiState(
     val monitorRuleBundles: List<MonitorRulesBundle> = emptyList(),
     val timeWindows: List<TimeWindow> = emptyList(),
     val myAlerts: List<Alert> = emptyList(),
+    val myLinkedMonitors: List<User> = emptyList(),
 
     // Monitor data
     val monitorAlerts: List<Alert> = emptyList(),
     val linkedProtectedUsers: List<User> = emptyList(),
     val rulesForSelectedProtected: MonitorRulesBundle? = null,
+    val isLinkingSuccessful: Boolean = false,
 
     // Alert cancel window state
     val isCancelWindowOpen: Boolean = false,
@@ -88,7 +90,21 @@ class AppViewModel @Inject constructor(
         try {
             val bundles = monitoringRepo.getRulesForProtected(protectedUid)
             val windows = monitoringRepo.listTimeWindows(protectedUid)
-            state = state.copy(monitorRuleBundles = bundles, timeWindows = windows)
+            
+            // Load full profiles of linked monitors
+            val me = authRepo.getUserProfile(protectedUid)
+            val monitorIds = me.monitors
+            val monitors = if (monitorIds.isNotEmpty()) {
+                monitorIds.map { id -> authRepo.getUserProfile(id) }
+            } else {
+                emptyList()
+            }
+            
+            state = state.copy(
+                monitorRuleBundles = bundles, 
+                timeWindows = windows,
+                myLinkedMonitors = monitors
+            )
         } catch (t: Throwable) {
             state = state.copy(error = t.message)
         }
@@ -143,14 +159,18 @@ class AppViewModel @Inject constructor(
     }
 
     fun linkWithOtp(code: String) = viewModelScope.launch {
-        state = state.copy(isLoading = true, error = null)
+        state = state.copy(isLoading = true, error = null, isLinkingSuccessful = false)
         try {
             authRepo.linkWithAssociationCode(code)
-            state = state.copy(isLoading = false)
+            state = state.copy(isLoading = false, isLinkingSuccessful = true)
             loadMyProfile()
         } catch (t: Throwable) {
             state = state.copy(isLoading = false, error = t.message)
         }
+    }
+
+    fun consumeLinkingSuccess() {
+        state = state.copy(isLinkingSuccessful = false)
     }
 
     // Rules

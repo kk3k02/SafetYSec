@@ -1,5 +1,7 @@
 package pt.a2025121082.isec.safetysec.data.model
 
+import com.google.firebase.firestore.Exclude
+
 /**
  * Monitoring rules definitions and helper data structures.
  */
@@ -95,7 +97,9 @@ data class TimeWindow(
 ) {
     /**
      * Validates the time window configuration.
+     * Annotated with @Exclude to prevent Firestore from persisting it.
      */
+    @Exclude
     fun isValid(): Boolean {
         if (startHour !in 0..23) return false
         if (endHour !in 0..23) return false
