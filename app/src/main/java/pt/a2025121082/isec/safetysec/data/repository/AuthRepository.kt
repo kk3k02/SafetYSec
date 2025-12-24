@@ -1,5 +1,6 @@
 package pt.a2025121082.isec.safetysec.data.repository
 
+import com.google.firebase.auth.EmailAuthProvider
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.firestore.FieldValue
@@ -56,8 +57,6 @@ class AuthRepository @Inject constructor(
             monitors = emptyList(),
             protectedUsers = emptyList(),
             associationCode = null
-            // If you add this field to User:
-            // associationCodeCreatedAt = null
         )
 
         usersCol.document(newUser.uid).set(newUser).await()
@@ -92,14 +91,51 @@ class AuthRepository @Inject constructor(
         auth.signOut()
     }
 
+    /**
+     * Updates the user's password in Firebase Auth.
+     * Note: May require recent login (reauthentication).
+     */
+    suspend fun updatePassword(newPassword: String) {
+        require(newPassword.length >= 6) { "Password must be at least 6 characters." }
+        val user = auth.currentUser ?: throw IllegalStateException("Not authenticated.")
+        user.updatePassword(newPassword).await()
+    }
+
+    /**
+     * Updates the user's email in Firebase Auth and Firestore.
+     * Note: May require recent login (reauthentication).
+     */
+    suspend fun updateEmail(newEmail: String) {
+        val cleanEmail = newEmail.trim()
+        require(cleanEmail.isNotBlank()) { "Email cannot be empty." }
+        
+        val firebaseUser = auth.currentUser ?: throw IllegalStateException("Not authenticated.")
+        val oldUid = firebaseUser.uid
+        
+        // Update in Firebase Auth
+        firebaseUser.updateEmail(cleanEmail).await()
+        
+        // Update in Firestore
+        usersCol.document(oldUid).update("email", cleanEmail).await()
+    }
+
+    /**
+     * Reauthenticates the user with their current email and password.
+     * Required for sensitive operations like changing email or password if the session is old.
+     */
+    suspend fun reauthenticate(password: String) {
+        val user = auth.currentUser ?: throw IllegalStateException("Not authenticated.")
+        val email = user.email ?: throw IllegalStateException("User email not found.")
+        val credential = EmailAuthProvider.getCredential(email, password)
+        user.reauthenticate(credential).await()
+    }
+
     // -------------------------
     // PROFILE (Firestore: users/{uid})
     // -------------------------
 
     /**
      * Loads the user profile from Firestore.
-     *
-     * @param uid User id to load; defaults to the currently authenticated uid.
      */
     suspend fun getUserProfile(uid: String = requireCurrentUid()): User {
         val snap = usersCol.document(uid).get().await()
@@ -151,16 +187,8 @@ class AuthRepository @Inject constructor(
     // OTP (Association)
     // -------------------------
 
-    /**
-     * Protected user generates a 6-digit OTP and shares it with a Monitor.
-     * The code is one-time use. A creation timestamp is stored for TTL checks.
-     *
-     * @return Generated association code.
-     */
     suspend fun generateAssociationCode(): String {
         val uid = requireCurrentUid()
-
-        // Try a few times to avoid collisions (rare but possible).
         repeat(5) {
             val code = (100000..999999).random().toString()
             val existing = usersCol.whereEqualTo("associationCode", code).get().await()
@@ -174,25 +202,14 @@ class AuthRepository @Inject constructor(
                 return code
             }
         }
-
-        // If we hit collisions too many times (extremely unlikely).
         throw IllegalStateException("Failed to generate unique association code.")
     }
 
-    /**
-     * Monitor enters the OTP received from Protected.
-     * Checks:
-     * - monitor cannot link to themselves
-     * - code exists and is not expired
-     * - updates are done transactionally to prevent race conditions
-     */
     suspend fun linkWithAssociationCode(inputCode: String) {
         val monitorId = requireCurrentUid()
         val code = inputCode.trim()
-
         require(code.isNotBlank()) { "Association code cannot be empty." }
 
-        // Find Protected user with the given code.
         val querySnap = usersCol.whereEqualTo("associationCode", code).get().await()
         if (querySnap.isEmpty) throw IllegalArgumentException("Invalid association code.")
 
@@ -206,62 +223,44 @@ class AuthRepository @Inject constructor(
         firestore.runTransaction { tx ->
             val protectedRef = usersCol.document(protectedId)
             val monitorRef = usersCol.document(monitorId)
-
             val protectedSnap = tx.get(protectedRef)
             val monitorSnap = tx.get(monitorRef)
 
             if (!protectedSnap.exists()) throw IllegalStateException("Protected user not found.")
             if (!monitorSnap.exists()) throw IllegalStateException("Monitor user not found.")
 
-            // Confirm the code is still present and unchanged (race-condition protection).
             val currentCode = protectedSnap.getString("associationCode")
             if (currentCode != code) {
                 throw IllegalArgumentException("Association code is no longer valid.")
             }
 
-            // TTL check (if the field exists).
             val createdAt = protectedSnap.getLong("associationCodeCreatedAt")
             if (createdAt != null) {
                 val age = System.currentTimeMillis() - createdAt
                 if (age > ASSOCIATION_CODE_TTL_MS) {
-                    // Remove expired code.
                     tx.update(protectedRef, "associationCode", FieldValue.delete())
                     tx.update(protectedRef, "associationCodeCreatedAt", FieldValue.delete())
-                    throw IllegalArgumentException("Association code expired. Generate a new one.")
+                    throw IllegalArgumentException("Association code expired.")
                 }
             }
 
-            // Two-way association.
             tx.update(protectedRef, "monitors", FieldValue.arrayUnion(monitorId))
             tx.update(monitorRef, "protectedUsers", FieldValue.arrayUnion(protectedId))
-
-            // Ensure Monitor role exists.
             tx.update(monitorRef, "roles", FieldValue.arrayUnion("Monitor"))
-
-            // Remove the consumed OTP.
             tx.update(protectedRef, "associationCode", FieldValue.delete())
             tx.update(protectedRef, "associationCodeCreatedAt", FieldValue.delete())
         }.await()
     }
 
-    /**
-     * Removes an existing association between a Monitor and a Protected user.
-     */
     suspend fun removeAssociation(monitorId: String, protectedId: String) {
-        require(monitorId.isNotBlank() && protectedId.isNotBlank())
-
         firestore.runTransaction { tx ->
             val monitorRef = usersCol.document(monitorId)
             val protectedRef = usersCol.document(protectedId)
-
             tx.update(monitorRef, "protectedUsers", FieldValue.arrayRemove(protectedId))
             tx.update(protectedRef, "monitors", FieldValue.arrayRemove(monitorId))
         }.await()
     }
 
-    /**
-     * Protected user can manually clear the OTP (e.g., "Cancel code" action).
-     */
     suspend fun clearAssociationCode(uid: String = requireCurrentUid()) {
         usersCol.document(uid).update(
             mapOf(
@@ -271,25 +270,12 @@ class AuthRepository @Inject constructor(
         ).await()
     }
 
-    // -------------------------
-    // Helpers / Lists
-    // -------------------------
-
-    /** @return List of monitor IDs linked to the current (or provided) user. */
     suspend fun getMyMonitors(uid: String = requireCurrentUid()): List<String> =
         getUserProfile(uid).monitors
 
-    /** @return List of protected user IDs linked to the current (or provided) user. */
     suspend fun getMyProtectedUsers(uid: String = requireCurrentUid()): List<String> =
         getUserProfile(uid).protectedUsers
 
-    // -------------------------
-    // Private helpers
-    // -------------------------
-
-    /**
-     * @return Current authenticated user's uid, or throws if not logged in.
-     */
     private fun requireCurrentUid(): String =
         auth.currentUser?.uid ?: throw IllegalStateException("Not authenticated.")
 }

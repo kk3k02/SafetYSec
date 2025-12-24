@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Logout
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -31,6 +32,7 @@ import pt.a2025121082.isec.safetysec.ui.auth.RegistrationScreen
 import pt.a2025121082.isec.safetysec.ui.flows.MonitorFlow
 import pt.a2025121082.isec.safetysec.ui.flows.ProtectedFlow
 import pt.a2025121082.isec.safetysec.ui.screens.PasswordResetScreen
+import pt.a2025121082.isec.safetysec.ui.screens.ProfileScreen
 import pt.a2025121082.isec.safetysec.ui.screens.RolePickerScreen
 import pt.a2025121082.isec.safetysec.ui.theme.SafetYSecTheme
 import pt.a2025121082.isec.safetysec.viewmodel.AppViewModel
@@ -38,10 +40,6 @@ import pt.a2025121082.isec.safetysec.viewmodel.AuthViewModel
 
 /**
  * Main entry Activity for the app.
- *
- * - Enables edge-to-edge layout
- * - Hosts the Compose UI tree
- * - Uses Hilt for dependency injection (@AndroidEntryPoint)
  */
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -60,6 +58,7 @@ private object Routes {
     const val Login = "login"
     const val Register = "register"
     const val ResetPassword = "reset_password"
+    const val Profile = "profile"
 
     // Role + flows
     const val RolePicker = "role_picker"
@@ -69,16 +68,6 @@ private object Routes {
 
 /**
  * Root composable of the application.
- *
- * Responsibilities:
- * - Refresh auth status on app start (including email verification)
- * - Load Firestore profile after authentication (roles, associations)
- * - Auto-route to the correct flow based on roles:
- *   - Protected only -> ProtectedFlow
- *   - Monitor only -> MonitorFlow
- *   - Both roles -> RolePicker
- * - Hosts the main NavHost for auth + role flows
- * - Provides a top app bar with optional Back + Logout actions
  */
 @Composable
 private fun SafetYSecApp(
@@ -86,10 +75,8 @@ private fun SafetYSecApp(
     authViewModel: AuthViewModel = hiltViewModel(),
     appViewModel: AppViewModel = hiltViewModel()
 ) {
-    // Refresh MFA/auth state when the app starts (emailVerified might have changed).
     LaunchedEffect(Unit) { authViewModel.refreshAuthState() }
 
-    // When authenticated -> load Firestore profile; otherwise reset app state.
     LaunchedEffect(authViewModel.uiState.isAuthenticated) {
         if (authViewModel.uiState.isAuthenticated) {
             appViewModel.loadMyProfile()
@@ -98,10 +85,13 @@ private fun SafetYSecApp(
         }
     }
 
-    // Auto-route once profile is loaded (role-based navigation).
     LaunchedEffect(authViewModel.uiState.isAuthenticated, appViewModel.state.me) {
         if (!authViewModel.uiState.isAuthenticated) return@LaunchedEffect
         val me = appViewModel.state.me ?: return@LaunchedEffect
+
+        // If we are already in one of the flows, don't auto-navigate away
+        val current = navController.currentDestination?.route
+        if (current in setOf(Routes.ProtectedFlow, Routes.MonitorFlow, Routes.Profile)) return@LaunchedEffect
 
         val hasProtected = me.roles.contains("Protected")
         val hasMonitor = me.roles.contains("Monitor")
@@ -111,22 +101,14 @@ private fun SafetYSecApp(
                 navController.navigate(Routes.ProtectedFlow) { popUpTo(0) }
             hasMonitor && !hasProtected ->
                 navController.navigate(Routes.MonitorFlow) { popUpTo(0) }
-            hasProtected && hasMonitor ->
-                navController.navigate(Routes.RolePicker) { popUpTo(0) }
             else ->
                 navController.navigate(Routes.RolePicker) { popUpTo(0) }
         }
     }
 
-    // Track current route to decide if the Back button should be shown.
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
 
-    /**
-     * Show a Back button when:
-     * - there is a previous destination in the back stack
-     * - we are not on the "root" screens (login / role picker / main flows)
-     */
     val showBack = navController.previousBackStackEntry != null &&
             currentRoute !in setOf(
         Routes.Login,
@@ -135,7 +117,6 @@ private fun SafetYSecApp(
         Routes.MonitorFlow
     )
 
-    /** Whether the user is currently authenticated. */
     val isAuthenticated = authViewModel.uiState.isAuthenticated
 
     Scaffold(
@@ -146,15 +127,16 @@ private fun SafetYSecApp(
                 onBack = { navController.popBackStack() },
                 onLogout = {
                     authViewModel.logout()
-                    // Clear the entire back stack and return to Login.
                     navController.navigate(Routes.Login) { popUpTo(0) }
+                },
+                onProfile = {
+                    navController.navigate(Routes.Profile)
                 }
             )
         },
         modifier = Modifier.fillMaxSize()
     ) { innerPadding ->
 
-        // Initial destination for the root NavHost depends on auth state.
         val start = if (isAuthenticated) Routes.RolePicker else Routes.Login
 
         NavHost(
@@ -169,9 +151,7 @@ private fun SafetYSecApp(
                     viewModel = authViewModel,
                     onNavigateToRegistration = { navController.navigate(Routes.Register) },
                     onNavigateToResetPassword = { navController.navigate(Routes.ResetPassword) },
-                    onLoginSuccess = {
-                        // No-op: role-based routing happens via LaunchedEffect after profile load.
-                    }
+                    onLoginSuccess = {}
                 )
             }
 
@@ -190,6 +170,13 @@ private fun SafetYSecApp(
                 PasswordResetScreen(
                     authViewModel = authViewModel,
                     onDone = { navController.popBackStack() }
+                )
+            }
+
+            composable(Routes.Profile) {
+                ProfileScreen(
+                    onNavigateBack = { navController.popBackStack() },
+                    viewModel = authViewModel
                 )
             }
 
@@ -221,19 +208,14 @@ private fun SafetYSecApp(
     }
 }
 
-/**
- * Top app bar shown across the app.
- *
- * - Shows an optional Back button depending on navigation state
- * - Shows a Logout action only when the user is authenticated
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AppTopBar(
     showBack: Boolean,
     isAuthenticated: Boolean,
     onBack: () -> Unit,
-    onLogout: () -> Unit
+    onLogout: () -> Unit,
+    onProfile: () -> Unit
 ) {
     TopAppBar(
         title = { Text("SafetYSec") },
@@ -246,6 +228,9 @@ private fun AppTopBar(
         },
         actions = {
             if (isAuthenticated) {
+                IconButton(onClick = onProfile) {
+                    Icon(Icons.Filled.Person, contentDescription = "Profile")
+                }
                 IconButton(onClick = onLogout) {
                     Icon(Icons.Filled.Logout, contentDescription = "Logout")
                 }
