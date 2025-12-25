@@ -47,24 +47,30 @@ fun MonitorDashboardScreen(vm: AppViewModel) {
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        // --- 1. Statistics Section ---
         item {
-            Text("Dashboard Statistics", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            Spacer(modifier = Modifier.height(8.dp))
+            Text("Dashboard Overview", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(12.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                StatCard("Protected", state.linkedProtectedUsers.size.toString(), Modifier.weight(1f))
-                StatCard("Recent Alerts", state.monitorAlerts.size.toString(), Modifier.weight(1f))
+                StatCard("Monitored Users", state.linkedProtectedUsers.size.toString(), Icons.Default.People, Modifier.weight(1f))
+                StatCard("Total Alerts", state.monitorAlerts.size.toString(), Icons.Default.NotificationsActive, Modifier.weight(1f))
             }
         }
 
+        // --- 2. Linked Protected Users Section ---
         item {
-            Text("Protected Users Status", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.VerifiedUser, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.width(8.dp))
+                Text("Monitored Protected Users", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            }
         }
         if (state.linkedProtectedUsers.isEmpty()) {
             item {
-                Text("No linked users.", style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
+                EmptyStateCard("No users assigned to your account yet.")
             }
         } else {
             items(state.linkedProtectedUsers) { user ->
@@ -72,12 +78,17 @@ fun MonitorDashboardScreen(vm: AppViewModel) {
             }
         }
 
+        // --- 3. Recent Activity Section ---
         item {
-            Text("Recent Alerts", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.History, contentDescription = null, tint = MaterialTheme.colorScheme.secondary)
+                Spacer(Modifier.width(8.dp))
+                Text("Recent Activity Log", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            }
         }
         if (state.monitorAlerts.isEmpty()) {
             item {
-                Text("No recent alerts.", style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
+                EmptyStateCard("No alerts recorded recently.")
             }
         } else {
             items(state.monitorAlerts) { alert ->
@@ -86,7 +97,9 @@ fun MonitorDashboardScreen(vm: AppViewModel) {
         }
         
         item {
-            state.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp)) }
+            state.error?.let { 
+                Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp)) 
+            }
         }
     }
 
@@ -112,11 +125,29 @@ fun MonitorDashboardScreen(vm: AppViewModel) {
 }
 
 @Composable
-fun StatCard(label: String, value: String, modifier: Modifier = Modifier) {
-    Card(modifier = modifier) {
-        Column(Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+fun StatCard(label: String, value: String, icon: androidx.compose.ui.graphics.vector.ImageVector, modifier: Modifier = Modifier) {
+    Card(
+        modifier = modifier,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        Column(Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.height(8.dp))
             Text(value, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-            Text(label, style = MaterialTheme.typography.bodySmall)
+            Text(label, style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+        }
+    }
+}
+
+@Composable
+fun EmptyStateCard(message: String) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.5f))
+    ) {
+        Box(Modifier.padding(24.dp), contentAlignment = Alignment.Center) {
+            Text(message, style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
         }
     }
 }
@@ -125,16 +156,23 @@ fun StatCard(label: String, value: String, modifier: Modifier = Modifier) {
 fun ProtectedUserStatusCard(user: User, onRemove: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
-        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.size(40.dp))
-            Spacer(Modifier.width(12.dp))
+        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Surface(
+                shape = androidx.compose.foundation.shape.CircleShape,
+                color = MaterialTheme.colorScheme.primaryContainer,
+                modifier = Modifier.size(48.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(Icons.Default.Person, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                }
+            }
+            Spacer(Modifier.width(16.dp))
             Column(Modifier.weight(1f)) {
                 Text(user.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Text("Roles: ${user.roles.joinToString(", ")}", style = MaterialTheme.typography.bodySmall)
+                Text(user.email, style = MaterialTheme.typography.bodySmall, color = Color.Gray)
             }
-            // --- REMOVE BUTTON FOR MONITOR ---
             IconButton(onClick = onRemove) {
                 Icon(Icons.Default.Delete, contentDescription = "Unlink User", tint = MaterialTheme.colorScheme.error)
             }
@@ -162,11 +200,12 @@ fun AlertItem(alert: Alert, sdf: SimpleDateFormat) {
                 Text(sdf.format(Date(alert.timestamp)), style = MaterialTheme.typography.bodySmall)
             }
             Spacer(Modifier.height(4.dp))
-            Text("User: ${alert.protectedName}", style = MaterialTheme.typography.bodyMedium)
+            Text("User: ${alert.protectedName}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
             if (alert.location != null) {
                 Text(
-                    "Location: ${alert.location.latitude}, ${alert.location.longitude}",
-                    style = MaterialTheme.typography.bodySmall
+                    "Location: ${String.format("%.5f", alert.location.latitude)}, ${String.format("%.5f", alert.location.longitude)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.DarkGray
                 )
             }
         }
@@ -179,7 +218,6 @@ fun MonitorLinkScreen(vm: AppViewModel) {
     var code by remember { mutableStateOf("") }
     var showSuccessDialog by remember { mutableStateOf(false) }
 
-    // Observe linking success state
     LaunchedEffect(st.isLinkingSuccessful) {
         if (st.isLinkingSuccessful) {
             showSuccessDialog = true
@@ -209,7 +247,6 @@ fun MonitorLinkScreen(vm: AppViewModel) {
         st.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp)) }
     }
 
-    // Success Dialog
     if (showSuccessDialog) {
         AlertDialog(
             onDismissRequest = { 
@@ -222,7 +259,7 @@ fun MonitorLinkScreen(vm: AppViewModel) {
                 TextButton(onClick = { 
                     showSuccessDialog = false
                     vm.consumeLinkingSuccess()
-                    code = "" // Clear the field
+                    code = "" 
                 }) {
                     Text("OK")
                 }
@@ -231,28 +268,22 @@ fun MonitorLinkScreen(vm: AppViewModel) {
     }
 }
 
-/**
- * Monitor rules configuration screen.
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MonitorRulesScreen(vm: AppViewModel) {
     val st = vm.state
     
-    // UI selection state
     var expanded by remember { mutableStateOf(false) }
     var selectedUser by remember { mutableStateOf<User?>(null) }
     var showRequestDialog by remember { mutableStateOf(false) }
     var showRequestSuccessDialog by remember { mutableStateOf(false) }
 
-    // Observe request success state
     LaunchedEffect(st.isRequestSuccessful) {
         if (st.isRequestSuccessful) {
             showRequestSuccessDialog = true
         }
     }
 
-    // Refresh bundle when user selection changes
     LaunchedEffect(selectedUser) {
         selectedUser?.let { vm.loadRulesForProtected(it.uid) }
     }
@@ -262,7 +293,6 @@ fun MonitorRulesScreen(vm: AppViewModel) {
             Text("Monitoring Configuration", style = MaterialTheme.typography.titleLarge)
             Spacer(Modifier.height(16.dp))
             
-            // --- Protected User Selector ---
             ExposedDropdownMenuBox(
                 expanded = expanded,
                 onExpandedChange = { expanded = !expanded }
@@ -294,7 +324,6 @@ fun MonitorRulesScreen(vm: AppViewModel) {
         }
 
         if (selectedUser != null) {
-            // --- Protected's Authorization Status (READ ONLY) ---
             item {
                 st.rulesForSelectedProtected?.let { bundle ->
                     Card(
@@ -318,16 +347,15 @@ fun MonitorRulesScreen(vm: AppViewModel) {
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = Color.Unspecified
                                     )
-                                    // READ-ONLY SWITCH WITH GREEN/RED CONTRAST
                                     Switch(
                                         checked = isAuth,
                                         onCheckedChange = null,
                                         enabled = false,
                                         colors = SwitchDefaults.colors(
                                             disabledCheckedThumbColor = Color.White,
-                                            disabledCheckedTrackColor = Color(0xFF2E7D32), // Green
+                                            disabledCheckedTrackColor = Color(0xFF2E7D32),
                                             disabledUncheckedThumbColor = Color.White,
-                                            disabledUncheckedTrackColor = Color(0xFFD32F2F), // Red
+                                            disabledUncheckedTrackColor = Color(0xFFD32F2F),
                                             disabledUncheckedBorderColor = Color(0xFFD32F2F)
                                         )
                                     )
@@ -358,7 +386,6 @@ fun MonitorRulesScreen(vm: AppViewModel) {
         }
     }
 
-    // --- POPUP DIALOG FOR REQUESTING RULES ---
     if (showRequestDialog && selectedUser != null) {
         RequestRulesDialog(
             user = selectedUser!!,
@@ -370,7 +397,6 @@ fun MonitorRulesScreen(vm: AppViewModel) {
         )
     }
 
-    // Request Success Dialog
     if (showRequestSuccessDialog) {
         AlertDialog(
             onDismissRequest = { 
@@ -397,7 +423,6 @@ fun RequestRulesDialog(
     onDismiss: () -> Unit,
     onSend: (List<RuleType>, RuleParams) -> Unit
 ) {
-    // Rule toggles for Request - ALL DEFAULT TO FALSE
     var fall by remember { mutableStateOf(false) }
     var accident by remember { mutableStateOf(false) }
     var geofence by remember { mutableStateOf(false) }
@@ -405,7 +430,6 @@ fun RequestRulesDialog(
     var inactivity by remember { mutableStateOf(false) }
     var panic by remember { mutableStateOf(false) }
 
-    // Parameters - ALL DEFAULT TO EMPTY
     var maxSpeed by remember { mutableStateOf("") }
     var inactMin by remember { mutableStateOf("") }
     var geoLat by remember { mutableStateOf("") }

@@ -6,6 +6,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -15,10 +16,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import pt.a2025121082.isec.safetysec.data.model.Alert
 import pt.a2025121082.isec.safetysec.data.model.RuleType
 import pt.a2025121082.isec.safetysec.data.model.User
 import pt.a2025121082.isec.safetysec.viewmodel.AppViewModel
 import pt.a2025121082.isec.safetysec.viewmodel.AuthViewModel
+import java.text.SimpleDateFormat
+import java.util.*
 
 /**
  * Protected history screen.
@@ -26,18 +30,63 @@ import pt.a2025121082.isec.safetysec.viewmodel.AuthViewModel
 @Composable
 fun ProtectedHistoryScreen(vm: AppViewModel) {
     val st = vm.state
+    val sdf = remember { SimpleDateFormat("HH:mm:ss dd/MM", Locale.getDefault()) }
+
     Column(Modifier.padding(16.dp)) {
-        Text("History (Protected)", style = MaterialTheme.typography.titleLarge)
+        Text("Alert History", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(16.dp))
 
-        LazyColumn {
-            items(st.myAlerts) { a ->
-                Card(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
-                    androidx.compose.material3.ListItem(
-                        headlineContent = { Text(a.type.displayName()) },
-                        supportingContent = { Text("Protected=${a.protectedName} • ${a.timestamp}") }
-                    )
+        if (st.myAlerts.isEmpty()) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("No recent alerts.", style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
+            }
+        } else {
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxSize()
+            ) {
+                items(st.myAlerts) { alert ->
+                    AlertHistoryItem(alert, sdf)
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun AlertHistoryItem(alert: Alert, sdf: SimpleDateFormat) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF1F1))
+    ) {
+        Column(Modifier.padding(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Warning, contentDescription = null, tint = Color.Red)
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = "${alert.type.displayName()} ALERT",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = Color.Red,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(Modifier.weight(1f))
+                Text(sdf.format(Date(alert.timestamp)), style = MaterialTheme.typography.bodySmall)
+            }
+            Spacer(Modifier.height(4.dp))
+            if (alert.location != null) {
+                Text(
+                    "Location: ${String.format("%.5f", alert.location.latitude)}, ${String.format("%.5f", alert.location.longitude)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.DarkGray
+                )
+            }
+            if (alert.videoUrl != null) {
+                Text(
+                    "Video attached",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.SemiBold
+                )
             }
         }
     }
