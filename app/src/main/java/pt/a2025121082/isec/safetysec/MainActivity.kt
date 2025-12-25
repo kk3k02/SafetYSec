@@ -50,25 +50,16 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-/**
- * Navigation route constants used by the root NavHost.
- */
 private object Routes {
-    // Auth
     const val LOGIN = "login"
     const val REGISTER = "register"
     const val RESET_PASSWORD = "reset_password"
     const val PROFILE = "profile"
-
-    // Role + flows
     const val ROLE_PICKER = "role_picker"
     const val PROTECTED_FLOW = "protected_flow"
     const val MONITOR_FLOW = "monitor_flow"
 }
 
-/**
- * Root composable of the application.
- */
 @Composable
 private fun SafetYSecApp(
     navController: NavHostController = rememberNavController(),
@@ -91,8 +82,6 @@ private fun SafetYSecApp(
     LaunchedEffect(authState.isAuthenticated, appState.me) {
         if (!authState.isAuthenticated) return@LaunchedEffect
         val me = appState.me ?: return@LaunchedEffect
-
-        // If we are already in one of the flows, don't auto-navigate away
         val current = navController.currentDestination?.route
         if (current in setOf(Routes.PROTECTED_FLOW, Routes.MONITOR_FLOW, Routes.PROFILE)) return@LaunchedEffect
 
@@ -111,14 +100,8 @@ private fun SafetYSecApp(
 
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
-
     val showBack = navController.previousBackStackEntry != null &&
-            currentRoute !in setOf(
-        Routes.LOGIN,
-        Routes.ROLE_PICKER,
-        Routes.PROTECTED_FLOW,
-        Routes.MONITOR_FLOW
-    )
+            currentRoute !in setOf(Routes.LOGIN, Routes.ROLE_PICKER, Routes.PROTECTED_FLOW, Routes.MONITOR_FLOW)
 
     val isAuthenticated = authState.isAuthenticated
 
@@ -139,15 +122,11 @@ private fun SafetYSecApp(
         },
         modifier = Modifier.fillMaxSize()
     ) { innerPadding ->
-
         val start = if (isAuthenticated) Routes.ROLE_PICKER else Routes.LOGIN
-
         NavHost(
             navController = navController,
             startDestination = start,
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
+            modifier = Modifier.fillMaxSize().padding(innerPadding)
         ) {
             composable(Routes.LOGIN) {
                 LoginScreen(
@@ -157,55 +136,31 @@ private fun SafetYSecApp(
                     onLoginSuccess = {}
                 )
             }
-
             composable(Routes.REGISTER) {
                 RegistrationScreen(
                     viewModel = authViewModel,
                     onNavigateToLogin = {
-                        navController.navigate(Routes.LOGIN) {
-                            popUpTo(Routes.REGISTER) { inclusive = true }
-                        }
+                        navController.navigate(Routes.LOGIN) { popUpTo(Routes.REGISTER) { inclusive = true } }
                     }
                 )
             }
-
             composable(Routes.RESET_PASSWORD) {
-                PasswordResetScreen(
-                    authViewModel = authViewModel,
-                    onDone = { navController.popBackStack() }
-                )
+                PasswordResetScreen(authViewModel = authViewModel, onDone = { navController.popBackStack() })
             }
-
             composable(Routes.PROFILE) {
-                ProfileScreen(
-                    onNavigateBack = { navController.popBackStack() },
-                    viewModel = authViewModel
-                )
+                ProfileScreen(onNavigateBack = { navController.popBackStack() }, viewModel = authViewModel)
             }
-
             composable(Routes.ROLE_PICKER) {
                 RolePickerScreen(
                     onGoProtected = { navController.navigate(Routes.PROTECTED_FLOW) { popUpTo(0) } },
                     onGoMonitor = { navController.navigate(Routes.MONITOR_FLOW) { popUpTo(0) } }
                 )
             }
-
             composable(Routes.PROTECTED_FLOW) {
-                ProtectedFlow(
-                    appViewModel = appViewModel,
-                    onSwitchToMonitor = {
-                        navController.navigate(Routes.MONITOR_FLOW) { popUpTo(0) }
-                    }
-                )
+                ProtectedFlow(appViewModel = appViewModel, onSwitchToMonitor = { navController.navigate(Routes.MONITOR_FLOW) { popUpTo(0) } })
             }
-
             composable(Routes.MONITOR_FLOW) {
-                MonitorFlow(
-                    appViewModel = appViewModel,
-                    onSwitchToProtected = {
-                        navController.navigate(Routes.PROTECTED_FLOW) { popUpTo(0) }
-                    }
-                )
+                MonitorFlow(appViewModel = appViewModel, onSwitchToProtected = { navController.navigate(Routes.PROTECTED_FLOW) { popUpTo(0) } })
             }
         }
     }
@@ -221,7 +176,12 @@ private fun AppTopBar(
     onProfile: () -> Unit
 ) {
     TopAppBar(
-        title = { Text("SafetYSec") },
+        title = { 
+            // Hide "SafetYSec" in TopAppBar when NOT authenticated (on login screen)
+            if (isAuthenticated) {
+                Text("SafetYSec") 
+            }
+        },
         navigationIcon = {
             if (showBack) {
                 IconButton(onClick = onBack) {

@@ -12,42 +12,29 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
-import pt.a2025121082.isec.safetysec.data.model.Alert
-import pt.a2025121082.isec.safetysec.data.model.MonitoringRule
-import pt.a2025121082.isec.safetysec.data.model.RuleParams
-import pt.a2025121082.isec.safetysec.data.model.RuleType
-import pt.a2025121082.isec.safetysec.data.model.TimeWindow
-import pt.a2025121082.isec.safetysec.data.model.User
+import pt.a2025121082.isec.safetysec.data.model.*
 import pt.a2025121082.isec.safetysec.data.repository.AlertRepository
 import pt.a2025121082.isec.safetysec.data.repository.AuthRepository
 import pt.a2025121082.isec.safetysec.data.repository.MonitorRulesBundle
 import pt.a2025121082.isec.safetysec.data.repository.MonitoringRepository
 import javax.inject.Inject
 
-/**
- * Global UI state for the main app flows.
- */
 data class AppUiState(
     val isLoading: Boolean = false,
     val error: String? = null,
     val me: User? = null,
     val myOtp: String? = null,
-
-    // Protected data
     val monitorRuleBundles: List<MonitorRulesBundle> = emptyList(),
     val timeWindows: List<TimeWindow> = emptyList(),
     val myAlerts: List<Alert> = emptyList(),
     val myLinkedMonitors: List<User> = emptyList(),
-
-    // Monitor data
     val monitorAlerts: List<Alert> = emptyList(),
     val linkedProtectedUsers: List<User> = emptyList(),
     val rulesForSelectedProtected: MonitorRulesBundle? = null,
     val isLinkingSuccessful: Boolean = false,
     val isRequestSuccessful: Boolean = false,
     val isRemovalSuccessful: Boolean = false,
-
-    // Alert cancel window state
+    val isAdditionSuccessful: Boolean = false,
     val isCancelWindowOpen: Boolean = false,
     val cancelSecondsLeft: Int = 0,
     val typedCancelCode: String? = null
@@ -76,35 +63,22 @@ class AppViewModel @Inject constructor(
         try {
             val me = authRepo.getUserProfile()
             state = state.copy(me = me, isLoading = false)
-
-            if (me.roles.contains("Protected")) {
-                refreshProtectedData(me.uid)
-            }
-            if (me.roles.contains("Monitor")) {
-                startMonitoringDashboard(me.uid)
-            }
+            if (me.roles.contains("Protected")) refreshProtectedData(me.uid)
+            if (me.roles.contains("Monitor")) startMonitoringDashboard(me.uid)
         } catch (t: Throwable) {
             state = state.copy(isLoading = false, error = t.message)
         }
     }
 
-    private fun refreshProtectedData(protectedUid: String) = viewModelScope.launch {
+    private suspend fun refreshProtectedData(protectedUid: String) {
         try {
             val bundles = monitoringRepo.getRulesForProtected(protectedUid)
             val windows = monitoringRepo.listTimeWindows(protectedUid)
-
-            // Load full profiles of linked monitors
             val me = authRepo.getUserProfile(protectedUid)
-            val monitorIds = me.monitors
-            val monitors = if (monitorIds.isNotEmpty()) {
-                monitorIds.map { id -> authRepo.getUserProfile(id) }
-            } else {
-                emptyList()
-            }
-
+            val monitors = me.monitors.map { authRepo.getUserProfile(it) }
             state = state.copy(
-                monitorRuleBundles = bundles,
-                timeWindows = windows,
+                monitorRuleBundles = bundles, 
+                timeWindows = windows, 
                 myLinkedMonitors = monitors
             )
         } catch (t: Throwable) {
@@ -115,48 +89,32 @@ class AppViewModel @Inject constructor(
     private fun startMonitoringDashboard(monitorUid: String) {
         alertsListenerJob?.cancel()
         alertsListenerJob = viewModelScope.launch {
-            db.collection("users").document(monitorUid)
-                .collection("alerts")
-                .orderBy("timestamp", Query.Direction.DESCENDING)
-                .limit(20)
+            db.collection("users").document(monitorUid).collection("alerts")
+                .orderBy("timestamp", Query.Direction.DESCENDING).limit(20)
                 .addSnapshotListener { snapshot, e ->
                     if (e != null) return@addSnapshotListener
-                    val alerts = snapshot?.toObjects(Alert::class.java) ?: emptyList()
-                    state = state.copy(monitorAlerts = alerts)
+                    state = state.copy(monitorAlerts = snapshot?.toObjects(Alert::class.java) ?: emptyList())
                 }
-
             val me = authRepo.getUserProfile(monitorUid)
-            val linkedIds = me.protectedUsers
-            if (linkedIds.isNotEmpty()) {
-                val users = linkedIds.map { id -> authRepo.getUserProfile(id) }
-                state = state.copy(linkedProtectedUsers = users)
-            } else {
-                state = state.copy(linkedProtectedUsers = emptyList())
-            }
+            val users = me.protectedUsers.map { authRepo.getUserProfile(it) }
+            state = state.copy(linkedProtectedUsers = users)
         }
     }
 
-    /**
-     * Loads the rules configuration and authorizations for a specific Protected user.
-     * This allows the Monitor to see what the Protected user has agreed to.
-     */
     fun loadRulesForProtected(protectedUid: String) = viewModelScope.launch {
         val me = state.me ?: return@launch
         try {
             val bundles = monitoringRepo.getRulesForProtected(protectedUid)
-            val myBundle = bundles.find { it.monitorId == me.uid }
-            state = state.copy(rulesForSelectedProtected = myBundle)
+            state = state.copy(rulesForSelectedProtected = bundles.find { it.monitorId == me.uid })
         } catch (t: Throwable) {
             state = state.copy(error = t.message)
         }
     }
 
-    // Association
     fun generateOtp() = viewModelScope.launch {
         state = state.copy(isLoading = true, error = null)
         try {
-            val code = authRepo.generateAssociationCode()
-            state = state.copy(isLoading = false, myOtp = code)
+            state = state.copy(isLoading = false, myOtp = authRepo.generateAssociationCode())
         } catch (t: Throwable) {
             state = state.copy(isLoading = false, error = t.message)
         }
@@ -173,17 +131,18 @@ class AppViewModel @Inject constructor(
         }
     }
 
-    fun consumeLinkingSuccess() {
-        state = state.copy(isLinkingSuccessful = false)
-    }
+    fun consumeLinkingSuccess() { state = state.copy(isLinkingSuccessful = false) }
 
     fun removeMonitor(monitorId: String) = viewModelScope.launch {
         val me = state.me ?: return@launch
         state = state.copy(isLoading = true, error = null, isRemovalSuccessful = false)
         try {
-            authRepo.removeAssociation(monitorId = monitorId, protectedId = me.uid)
-            state = state.copy(isLoading = false, isRemovalSuccessful = true)
-            refreshProtectedData(me.uid)
+            authRepo.removeAssociation(monitorId, me.uid)
+            state = state.copy(
+                isLoading = false, 
+                isRemovalSuccessful = true,
+                myLinkedMonitors = state.myLinkedMonitors.filter { it.uid != monitorId }
+            )
         } catch (t: Throwable) {
             state = state.copy(isLoading = false, error = t.message)
         }
@@ -193,45 +152,33 @@ class AppViewModel @Inject constructor(
         val me = state.me ?: return@launch
         state = state.copy(isLoading = true, error = null, isRemovalSuccessful = false)
         try {
-            authRepo.removeAssociation(monitorId = me.uid, protectedId = protectedId)
-            state = state.copy(isLoading = false, isRemovalSuccessful = true)
-            startMonitoringDashboard(me.uid) // Refresh dashboard for monitor
+            authRepo.removeAssociation(me.uid, protectedId)
+            state = state.copy(
+                isLoading = false, 
+                isRemovalSuccessful = true,
+                linkedProtectedUsers = state.linkedProtectedUsers.filter { it.uid != protectedId }
+            )
         } catch (t: Throwable) {
             state = state.copy(isLoading = false, error = t.message)
         }
     }
 
-    fun consumeRemovalSuccess() {
-        state = state.copy(isRemovalSuccessful = false)
-    }
+    fun consumeRemovalSuccess() { state = state.copy(isRemovalSuccessful = false) }
 
-    // Rules
-    fun requestRulesForProtected(
-        protectedUid: String,
-        enabledTypes: List<RuleType>,
-        params: RuleParams
-    ) = viewModelScope.launch {
+    fun requestRulesForProtected(protectedUid: String, enabledTypes: List<RuleType>, params: RuleParams) = viewModelScope.launch {
         val me = state.me ?: return@launch
         state = state.copy(isLoading = true, error = null, isRequestSuccessful = false)
         try {
-            val rules = enabledTypes.map { type ->
-                MonitoringRule(type = type, params = params, enabled = true)
-            }
-            monitoringRepo.requestRules(
-                protectedUid = protectedUid,
-                monitorUid = me.uid,
-                rules = rules
-            )
+            val rules = enabledTypes.map { MonitoringRule(it, params, true) }
+            monitoringRepo.requestRules(protectedUid, me.uid, rules)
             state = state.copy(isLoading = false, isRequestSuccessful = true)
-            loadRulesForProtected(protectedUid) // Refresh after update
+            loadRulesForProtected(protectedUid)
         } catch (t: Throwable) {
             state = state.copy(isLoading = false, error = t.message)
         }
     }
 
-    fun consumeRequestSuccess() {
-        state = state.copy(isRequestSuccessful = false)
-    }
+    fun consumeRequestSuccess() { state = state.copy(isRequestSuccessful = false) }
 
     fun saveAuthorizations(monitorUid: String, authorized: List<RuleType>) = viewModelScope.launch {
         val me = state.me ?: return@launch
@@ -245,19 +192,40 @@ class AppViewModel @Inject constructor(
         }
     }
 
-    // Time windows
     fun addTimeWindow(days: List<Int>, startHour: Int, endHour: Int) = viewModelScope.launch {
         val me = state.me ?: return@launch
         val window = TimeWindow(daysOfWeek = days, startHour = startHour, endHour = endHour)
-        if (!window.isValid) {
+        if (!window.checkValid()) {
             state = state.copy(error = "Invalid time window")
             return@launch
         }
-        state = state.copy(isLoading = true, error = null)
+        state = state.copy(isLoading = true, error = null, isAdditionSuccessful = false)
         try {
             monitoringRepo.addTimeWindow(me.uid, window)
-            state = state.copy(isLoading = false)
-            refreshProtectedData(me.uid)
+            val updated = state.timeWindows + window
+            state = state.copy(
+                isLoading = false, 
+                timeWindows = updated,
+                isAdditionSuccessful = true
+            )
+        } catch (t: Throwable) {
+            state = state.copy(isLoading = false, error = t.message)
+        }
+    }
+
+    fun consumeAdditionSuccess() { state = state.copy(isAdditionSuccessful = false) }
+
+    fun removeTimeWindow(windowId: String) = viewModelScope.launch {
+        val me = state.me ?: return@launch
+        state = state.copy(isLoading = true, error = null, isRemovalSuccessful = false)
+        try {
+            monitoringRepo.deleteTimeWindow(me.uid, windowId)
+            val updatedWindows = state.timeWindows.filter { it.id != windowId }
+            state = state.copy(
+                isLoading = false, 
+                isRemovalSuccessful = true,
+                timeWindows = updatedWindows
+            )
         } catch (t: Throwable) {
             state = state.copy(isLoading = false, error = t.message)
         }
@@ -274,28 +242,13 @@ class AppViewModel @Inject constructor(
         }
     }
 
-    // Panic alert
     fun triggerPanic() = viewModelScope.launch {
         val me = state.me ?: return@launch
-        if (!me.roles.contains("Protected")) {
-            state = state.copy(error = "Only Protected can trigger panic.")
-            return@launch
-        }
         state = state.copy(isCancelWindowOpen = true, cancelSecondsLeft = 10)
-        val sent = alertRepo.triggerAlert(
-            ruleType = RuleType.PANIC,
-            user = me,
-            cancelCodeProvider = { state.typedCancelCode },
-            locationProvider = { GeoPoint(0.0, 0.0) },
-            videoUriProvider = { null }
-        )
+        val sent = alertRepo.triggerAlert(RuleType.PANIC, me, { state.typedCancelCode }, { GeoPoint(0.0, 0.0) }, { null })
         state = state.copy(isCancelWindowOpen = false, cancelSecondsLeft = 0, typedCancelCode = null)
-        if (!sent) {
-            state = state.copy(error = "Alert cancelled.")
-        }
+        if (!sent) state = state.copy(error = "Alert cancelled.")
     }
 
-    fun tryCancelAlert(typed: String) {
-        state = state.copy(typedCancelCode = typed)
-    }
+    fun tryCancelAlert(typed: String) { state = state.copy(typedCancelCode = typed) }
 }

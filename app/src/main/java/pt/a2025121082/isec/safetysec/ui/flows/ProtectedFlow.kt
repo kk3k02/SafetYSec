@@ -1,5 +1,6 @@
 package pt.a2025121082.isec.safetysec.ui.flows
 
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Person
@@ -14,6 +15,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -28,35 +30,20 @@ import pt.a2025121082.isec.safetysec.viewmodel.AppViewModel
 
 /**
  * Navigation flow for the Protected role.
- *
- * Provides:
- * - Bottom navigation with four tabs:
- *   - History (alerts/events history)
- *   - Windows (time windows when rules can be active)
- *   - Monitors (linked monitors + rule authorization)
- *   - Profile (account + switching roles)
- * - A Panic floating action button that triggers an immediate PANIC alert
- * - A mandatory 10-second cancel dialog after an alert is triggered (project requirement)
  */
 @Composable
 fun ProtectedFlow(
     appViewModel: AppViewModel,
     onSwitchToMonitor: () -> Unit
 ) {
-    /** Local NavController used only inside the Protected flow. */
     val nav = rememberNavController()
+    val entry by nav.currentBackStackEntryAsState()
+    val currentRoute = entry?.destination?.route
 
     Scaffold(
         bottomBar = {
             NavigationBar {
-                // Observe navigation destination to highlight the selected tab.
-                val entry by nav.currentBackStackEntryAsState()
                 val dest = entry?.destination
-
-                /**
-                 * Navigates to the selected route while preserving/restoring state
-                 * between bottom navigation tabs.
-                 */
                 fun go(route: String) {
                     nav.navigate(route) {
                         popUpTo(nav.graph.findStartDestination().id) { saveState = true }
@@ -94,18 +81,19 @@ fun ProtectedFlow(
                 )
             }
         },
-
-        // Panic button (manual alert trigger)
+        // Show Panic button ONLY if NOT on Windows screen to avoid overlapping FABs
         floatingActionButton = {
-            FloatingActionButton(onClick = { appViewModel.triggerPanic() }) {
-                Icon(Icons.Filled.Warning, contentDescription = "Panic")
+            if (currentRoute != PRoutes.Windows) {
+                FloatingActionButton(onClick = { appViewModel.triggerPanic() }) {
+                    Icon(Icons.Filled.Warning, contentDescription = "Panic")
+                }
             }
         }
     ) { innerPadding ->
-        // Host navigation destinations for the Protected flow.
         NavHost(
             navController = nav,
-            startDestination = PRoutes.History
+            startDestination = PRoutes.History,
+            modifier = Modifier.padding(innerPadding)
         ) {
             composable(PRoutes.History) { ProtectedHistoryScreen(appViewModel) }
             composable(PRoutes.Windows) { ProtectedWindowsScreen(appViewModel) }
@@ -113,14 +101,10 @@ fun ProtectedFlow(
             composable(PRoutes.Profile) { ProtectedProfileScreen(appViewModel, onSwitchToMonitor) }
         }
 
-        // 10-second cancel dialog shown after an alert is triggered (project requirement).
         ProtectedCancelAlertDialog(appViewModel)
     }
 }
 
-/**
- * Route constants for Protected flow destinations.
- */
 private object PRoutes {
     const val History = "p_history"
     const val Windows = "p_windows"

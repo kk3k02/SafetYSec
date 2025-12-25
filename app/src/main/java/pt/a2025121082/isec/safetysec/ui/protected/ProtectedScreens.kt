@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Warning
@@ -18,6 +19,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import pt.a2025121082.isec.safetysec.data.model.Alert
 import pt.a2025121082.isec.safetysec.data.model.RuleType
+import pt.a2025121082.isec.safetysec.data.model.TimeWindow
 import pt.a2025121082.isec.safetysec.data.model.User
 import pt.a2025121082.isec.safetysec.viewmodel.AppViewModel
 import pt.a2025121082.isec.safetysec.viewmodel.AuthViewModel
@@ -80,14 +82,6 @@ fun AlertHistoryItem(alert: Alert, sdf: SimpleDateFormat) {
                     color = Color.DarkGray
                 )
             }
-            if (alert.videoUrl != null) {
-                Text(
-                    "Video attached",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
         }
     }
 }
@@ -98,66 +92,186 @@ fun AlertHistoryItem(alert: Alert, sdf: SimpleDateFormat) {
 @Composable
 fun ProtectedWindowsScreen(vm: AppViewModel) {
     val st = vm.state
-    var days by remember { mutableStateOf("1,2,3,4,5") }
-    var start by remember { mutableStateOf("9") }
-    var end by remember { mutableStateOf("18") }
+    var showAddDialog by remember { mutableStateOf(false) }
+    var showRemovalSuccessDialog by remember { mutableStateOf(false) }
+    var showAdditionSuccessDialog by remember { mutableStateOf(false) }
 
-    Column(Modifier.padding(16.dp)) {
-        Text("Time windows", style = MaterialTheme.typography.titleLarge)
-        Spacer(Modifier.height(16.dp))
+    // Observe removal success
+    LaunchedEffect(st.isRemovalSuccessful) {
+        if (st.isRemovalSuccessful) {
+            showRemovalSuccessDialog = true
+        }
+    }
 
-        // Existing windows
-        LazyColumn(modifier = Modifier.weight(1f)) {
-            items(st.timeWindows) { w ->
-                Card(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
-                    androidx.compose.material3.ListItem(
-                        headlineContent = { Text("Days: ${w.daysOfWeek}") },
-                        supportingContent = { Text("${w.startHour}:00 - ${w.endHour}:00") }
-                    )
+    // Observe addition success
+    LaunchedEffect(st.isAdditionSuccessful) {
+        if (st.isAdditionSuccessful) {
+            showAdditionSuccessDialog = true
+        }
+    }
+
+    Scaffold(
+        floatingActionButton = {
+            FloatingActionButton(onClick = { showAddDialog = true }) {
+                Icon(Icons.Default.Add, contentDescription = "Add Window")
+            }
+        }
+    ) { padding ->
+        Column(Modifier.padding(padding).padding(16.dp)) {
+            Text("Active Monitoring Windows", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text("Define when your monitors are allowed to track you.", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+            Spacer(Modifier.height(16.dp))
+
+            if (st.timeWindows.isEmpty()) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("No time windows defined.", color = Color.Gray)
+                }
+            } else {
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    items(st.timeWindows) { window ->
+                        TimeWindowCard(window, onRemove = { vm.removeTimeWindow(window.id) })
+                    }
                 }
             }
         }
-
-        Spacer(Modifier.height(12.dp))
-
-        // Add new window (simple prototype UI)
-        Text("Add window", style = MaterialTheme.typography.titleMedium)
-        OutlinedTextField(
-            value = days,
-            onValueChange = { days = it },
-            label = { Text("Days (1..7 comma)") },
-            modifier = Modifier.fillMaxWidth()
-        )
-        OutlinedTextField(
-            value = start,
-            onValueChange = { start = it },
-            label = { Text("Start hour (0..23)") },
-            modifier = Modifier.fillMaxWidth()
-        )
-        OutlinedTextField(
-            value = end,
-            onValueChange = { end = it },
-            label = { Text("End hour (0..23)") },
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        Spacer(Modifier.height(16.dp))
-        Button(
-            onClick = {
-                val parsedDays = days
-                    .split(",")
-                    .mapNotNull { it.trim().toIntOrNull() }
-                    .filter { it in 1..7 }
-
-                vm.addTimeWindow(
-                    parsedDays,
-                    start.toIntOrNull() ?: 0,
-                    end.toIntOrNull() ?: 0
-                )
-            },
-            modifier = Modifier.fillMaxWidth()
-        ) { Text("Save") }
     }
+
+    if (showAddDialog) {
+        AddTimeWindowDialog(
+            onDismiss = { showAddDialog = false },
+            onSave = { days, start, end ->
+                vm.addTimeWindow(days, start, end)
+                showAddDialog = false
+            }
+        )
+    }
+
+    // Window Addition Success Dialog
+    if (showAdditionSuccessDialog) {
+        AlertDialog(
+            onDismissRequest = { 
+                showAdditionSuccessDialog = false
+                vm.consumeAdditionSuccess()
+            },
+            title = { Text("Window Added") },
+            text = { Text("The protection time window has been successfully saved.") },
+            confirmButton = {
+                TextButton(onClick = { 
+                    showAdditionSuccessDialog = false
+                    vm.consumeAdditionSuccess()
+                }) {
+                    Text("OK")
+                }
+            }
+        )
+    }
+
+    // Window Removal Success Dialog
+    if (showRemovalSuccessDialog) {
+        AlertDialog(
+            onDismissRequest = { 
+                showRemovalSuccessDialog = false
+                vm.consumeRemovalSuccess()
+            },
+            title = { Text("Window Removed") },
+            text = { Text("The protection time window has been successfully deleted.") },
+            confirmButton = {
+                TextButton(onClick = { 
+                    showRemovalSuccessDialog = false
+                    vm.consumeRemovalSuccess()
+                }) {
+                    Text("OK")
+                }
+            }
+        )
+    }
+}
+
+@Composable
+fun TimeWindowCard(window: TimeWindow, onRemove: () -> Unit) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(window.daysToString(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(
+                    "Active from ${window.startHour}:00 to ${window.endHour}:00",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+            IconButton(onClick = onRemove) {
+                Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AddTimeWindowDialog(onDismiss: () -> Unit, onSave: (List<Int>, Int, Int) -> Unit) {
+    var selectedDays by remember { mutableStateOf(setOf<Int>()) }
+    var timeRange by remember { mutableStateOf(8f..17f) }
+    
+    val dayNames = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add Protection Window") },
+        text = {
+            Column(Modifier.fillMaxWidth()) {
+                Text("Select Days:", style = MaterialTheme.typography.labelLarge)
+                Spacer(Modifier.height(8.dp))
+                
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        (1..4).forEach { day ->
+                            FilterChip(
+                                selected = selectedDays.contains(day),
+                                onClick = { 
+                                    selectedDays = if (selectedDays.contains(day)) selectedDays - day else selectedDays + day
+                                },
+                                label = { Text(dayNames[day-1]) }
+                            )
+                        }
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        (5..7).forEach { day ->
+                            FilterChip(
+                                selected = selectedDays.contains(day),
+                                onClick = { 
+                                    selectedDays = if (selectedDays.contains(day)) selectedDays - day else selectedDays + day
+                                },
+                                label = { Text(dayNames[day-1]) }
+                            )
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(24.dp))
+                Text(
+                    "Active Hours: ${timeRange.start.toInt()}:00 - ${timeRange.endInclusive.toInt()}:00",
+                    style = MaterialTheme.typography.labelLarge
+                )
+                RangeSlider(
+                    value = timeRange,
+                    onValueChange = { timeRange = it },
+                    valueRange = 0f..23f,
+                    steps = 22
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onSave(selectedDays.toList(), timeRange.start.toInt(), timeRange.endInclusive.toInt()) },
+                enabled = selectedDays.isNotEmpty() && timeRange.start < timeRange.endInclusive
+            ) {
+                Text("Save Window")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
 }
 
 /**
@@ -169,17 +283,14 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
     var showOtpDialog by remember { mutableStateOf(false) }
     var showRemovalSuccessDialog by remember { mutableStateOf(false) }
 
-    // State for Pending Request Dialog
     var pendingRequestMonitor by remember { mutableStateOf<Pair<User, List<RuleType>>?>(null) }
 
-    // Observe removal success
     LaunchedEffect(st.isRemovalSuccessful) {
         if (st.isRemovalSuccessful) {
             showRemovalSuccessDialog = true
         }
     }
 
-    // Detect if any monitor has a "requested" list that isn't fully in "authorizedTypes"
     LaunchedEffect(st.monitorRuleBundles, st.myLinkedMonitors) {
         st.myLinkedMonitors.forEach { monitor ->
             val bundle = st.monitorRuleBundles.find { it.monitorId == monitor.uid }
@@ -255,7 +366,7 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
                             }
                         }
 
-                        RuleType.entries.forEach { type ->
+                        RuleType.values().forEach { type ->
                             Row(
                                 Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -319,7 +430,6 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
         )
     }
 
-    // Removal Success Dialog
     if (showRemovalSuccessDialog) {
         AlertDialog(
             onDismissRequest = { 

@@ -34,7 +34,6 @@ fun MonitorDashboardScreen(vm: AppViewModel) {
     val sdf = remember { SimpleDateFormat("HH:mm:ss dd/MM", Locale.getDefault()) }
     var showRemovalSuccessDialog by remember { mutableStateOf(false) }
 
-    // Observe removal success
     LaunchedEffect(state.isRemovalSuccessful) {
         if (state.isRemovalSuccessful) {
             showRemovalSuccessDialog = true
@@ -47,7 +46,6 @@ fun MonitorDashboardScreen(vm: AppViewModel) {
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // --- 1. Statistics Section ---
         item {
             Text("Dashboard Overview", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(12.dp))
@@ -56,11 +54,10 @@ fun MonitorDashboardScreen(vm: AppViewModel) {
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 StatCard("Monitored Users", state.linkedProtectedUsers.size.toString(), Icons.Default.People, Modifier.weight(1f))
-                StatCard("Total Alerts", state.monitorAlerts.size.toString(), Icons.Default.NotificationsActive, Modifier.weight(1f))
+                StatCard("Recent Alerts", state.monitorAlerts.size.toString(), Icons.Default.NotificationsActive, Modifier.weight(1f))
             }
         }
 
-        // --- 2. Linked Protected Users Section ---
         item {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.VerifiedUser, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
@@ -78,7 +75,6 @@ fun MonitorDashboardScreen(vm: AppViewModel) {
             }
         }
 
-        // --- 3. Recent Activity Section ---
         item {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.History, contentDescription = null, tint = MaterialTheme.colorScheme.secondary)
@@ -103,7 +99,6 @@ fun MonitorDashboardScreen(vm: AppViewModel) {
         }
     }
 
-    // Removal Success Dialog
     if (showRemovalSuccessDialog) {
         AlertDialog(
             onDismissRequest = { 
@@ -335,7 +330,7 @@ fun MonitorRulesScreen(vm: AppViewModel) {
                             Text("Green = Authorized, Red = Denied", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
                             Spacer(Modifier.height(8.dp))
                             
-                            RuleType.entries.forEach { type ->
+                            RuleType.values().forEach { type ->
                                 val isAuth = bundle.authorizedTypes.contains(type)
                                 Row(
                                     Modifier.fillMaxWidth().padding(vertical = 2.dp),

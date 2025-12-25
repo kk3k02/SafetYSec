@@ -7,15 +7,6 @@ import pt.a2025121082.isec.safetysec.data.model.*
 import javax.inject.Inject
 
 /**
- * Represents a rules bundle created per Monitor for a specific Protected user.
- */
-data class MonitorRulesBundle(
-    val monitorId: String,
-    val requested: List<MonitoringRule>,
-    val authorizedTypes: List<RuleType>
-)
-
-/**
  * Repository responsible for managing monitoring rules and time windows.
  */
 class MonitoringRepository @Inject constructor(
@@ -47,7 +38,6 @@ class MonitoringRepository @Inject constructor(
             )
         }
 
-        // We only update "requested". "authorizedTypes" stays as is (or empty if it's a new doc).
         ruleDoc(protectedUid, monitorUid).set(
             mapOf("requested" to rulesMapList),
             SetOptions.merge()
@@ -107,11 +97,20 @@ class MonitoringRepository @Inject constructor(
         firestore.collection("users").document(protectedUid).collection("timeWindows")
 
     suspend fun addTimeWindow(protectedUid: String, window: TimeWindow) {
-        windowsCol(protectedUid).add(window).await()
+        // Use window.id as the document ID for explicit control
+        windowsCol(protectedUid).document(window.id).set(window).await()
+    }
+
+    suspend fun deleteTimeWindow(protectedUid: String, windowId: String) {
+        // Delete the document by its explicit ID in Firestore
+        windowsCol(protectedUid).document(windowId).delete().await()
     }
 
     suspend fun listTimeWindows(protectedUid: String): List<TimeWindow> {
         val qs = windowsCol(protectedUid).get().await()
-        return qs.documents.mapNotNull { it.toObject(TimeWindow::class.java) }
+        return qs.documents.mapNotNull { d ->
+            // Fix: Explicitly map the Firestore Document ID to the object's id property
+            d.toObject(TimeWindow::class.java)?.copy(id = d.id)
+        }
     }
 }
