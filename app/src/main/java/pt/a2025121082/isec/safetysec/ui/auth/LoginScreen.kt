@@ -1,43 +1,28 @@
 package pt.a2025121082.isec.safetysec.ui.auth
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Security
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.launch
-import pt.a2025121082.isec.safetysec.viewmodel.AuthViewModel
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
+import pt.a2025121082.isec.safetysec.viewmodel.AuthViewModel
 
 /**
- * Login screen (Jetpack Compose).
+ * Modern login screen for SafetYSec.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -55,18 +40,20 @@ fun LoginScreen(
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(state.error) {
-        val err = state.error
-        if (!err.isNullOrBlank()) {
-            snackbarHostState.showSnackbar(err)
-            viewModel.clearError()
+        state.error?.let {
+            if (it.isNotBlank()) {
+                snackbarHostState.showSnackbar(it)
+                viewModel.clearError()
+            }
         }
     }
 
     LaunchedEffect(state.message) {
-        val msg = state.message
-        if (!msg.isNullOrBlank()) {
-            snackbarHostState.showSnackbar(msg)
-            viewModel.clearMessage()
+        state.message?.let {
+            if (it.isNotBlank()) {
+                snackbarHostState.showSnackbar(it)
+                viewModel.clearMessage()
+            }
         }
     }
 
@@ -87,21 +74,44 @@ fun LoginScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(24.dp),
+                .padding(32.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            // Tytuł sekcji (bez nazwy aplikacji, tylko akcja)
-            Text("Login", style = MaterialTheme.typography.headlineMedium)
-            Spacer(Modifier.height(32.dp))
+            // Estetyczny nagłówek z ikoną
+            Icon(
+                imageVector = Icons.Default.Security,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(72.dp)
+            )
             
-            // Email input
+            Spacer(Modifier.height(16.dp))
+            
+            Text(
+                text = "Welcome Back",
+                style = MaterialTheme.typography.headlineLarge,
+                fontWeight = FontWeight.ExtraBold
+            )
+            
+            Text(
+                text = "Sign in to continue to SafetYSec",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Spacer(Modifier.height(48.dp))
+
+            // Pole email z ikoną
             OutlinedTextField(
                 value = email,
                 onValueChange = { email = it },
-                label = { Text("Email") },
+                label = { Text("Email Address") },
+                placeholder = { Text("name@example.com") },
+                leadingIcon = { Icon(Icons.Default.Email, contentDescription = null) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.medium,
                 keyboardOptions = KeyboardOptions(
                     keyboardType = KeyboardType.Email,
                     imeAction = ImeAction.Next
@@ -110,13 +120,15 @@ fun LoginScreen(
 
             Spacer(Modifier.height(16.dp))
 
-            // Password input
+            // Pole hasło z ikoną
             OutlinedTextField(
                 value = password,
                 onValueChange = { password = it },
                 label = { Text("Password") },
+                leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.medium,
                 visualTransformation = PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(
                     keyboardType = KeyboardType.Password,
@@ -126,38 +138,41 @@ fun LoginScreen(
                     onDone = {
                         if (!state.isLoading && email.isNotBlank() && password.isNotBlank()) {
                             viewModel.login(email, password)
-                        } else if (email.isBlank() || password.isBlank()) {
-                            scope.launch {
-                                snackbarHostState.showSnackbar("Enter email and password.")
-                            }
                         }
                     }
                 )
             )
 
+            // Zapomniałeś hasła? - wyrównane do prawej
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
+                TextButton(onClick = onNavigateToResetPassword) {
+                    Text("Forgot password?", style = MaterialTheme.typography.labelMedium)
+                }
+            }
+
             Spacer(Modifier.height(24.dp))
 
-            // Login button
+            // Przycisk logowania
             Button(
                 onClick = { viewModel.login(email, password) },
                 enabled = !state.isLoading && email.isNotBlank() && password.isNotBlank(),
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
+                shape = MaterialTheme.shapes.medium
             ) {
                 if (state.isLoading) {
                     CircularProgressIndicator(
+                        color = Color.White,
                         strokeWidth = 2.dp,
-                        modifier = Modifier
-                            .height(18.dp)
-                            .padding(end = 12.dp)
+                        modifier = Modifier.size(24.dp)
                     )
-                    Text("Logging in...")
                 } else {
-                    Text("Login")
+                    Text("Sign In", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 }
             }
 
             if (isEmailVerificationProblem) {
-                Spacer(Modifier.height(8.dp))
                 TextButton(
                     onClick = { viewModel.resendVerificationEmail() },
                     enabled = !state.isLoading
@@ -166,22 +181,26 @@ fun LoginScreen(
                 }
             }
 
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(32.dp))
 
-            TextButton(
-                onClick = onNavigateToResetPassword,
-                enabled = !state.isLoading
+            // Rejestracja na samym dole
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
             ) {
-                Text("Forgot password?")
-            }
-
-            Spacer(Modifier.height(8.dp))
-
-            TextButton(
-                onClick = onNavigateToRegistration,
-                enabled = !state.isLoading
-            ) {
-                Text("Don't have an account? Register")
+                Text(
+                    "Don't have an account?",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                TextButton(onClick = onNavigateToRegistration) {
+                    Text(
+                        "Register now",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
         }
     }
