@@ -32,6 +32,14 @@ import java.util.*
 fun MonitorDashboardScreen(vm: AppViewModel) {
     val state = vm.state
     val sdf = remember { SimpleDateFormat("HH:mm:ss dd/MM", Locale.getDefault()) }
+    var showRemovalSuccessDialog by remember { mutableStateOf(false) }
+
+    // Observe removal success
+    LaunchedEffect(state.isRemovalSuccessful) {
+        if (state.isRemovalSuccessful) {
+            showRemovalSuccessDialog = true
+        }
+    }
 
     LazyColumn(
         modifier = Modifier
@@ -60,7 +68,7 @@ fun MonitorDashboardScreen(vm: AppViewModel) {
             }
         } else {
             items(state.linkedProtectedUsers) { user ->
-                ProtectedUserStatusCard(user)
+                ProtectedUserStatusCard(user, onRemove = { vm.removeProtectedUser(user.uid) })
             }
         }
 
@@ -76,6 +84,30 @@ fun MonitorDashboardScreen(vm: AppViewModel) {
                 AlertItem(alert, sdf)
             }
         }
+        
+        item {
+            state.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp)) }
+        }
+    }
+
+    // Removal Success Dialog
+    if (showRemovalSuccessDialog) {
+        AlertDialog(
+            onDismissRequest = { 
+                showRemovalSuccessDialog = false
+                vm.consumeRemovalSuccess()
+            },
+            title = { Text("User Unlinked") },
+            text = { Text("The protected user has been successfully unlinked from your dashboard.") },
+            confirmButton = {
+                TextButton(onClick = { 
+                    showRemovalSuccessDialog = false
+                    vm.consumeRemovalSuccess()
+                }) {
+                    Text("OK")
+                }
+            }
+        )
     }
 }
 
@@ -90,7 +122,7 @@ fun StatCard(label: String, value: String, modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun ProtectedUserStatusCard(user: User) {
+fun ProtectedUserStatusCard(user: User, onRemove: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
@@ -98,9 +130,13 @@ fun ProtectedUserStatusCard(user: User) {
         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.size(40.dp))
             Spacer(Modifier.width(12.dp))
-            Column {
+            Column(Modifier.weight(1f)) {
                 Text(user.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Text("Roles: ${user.roles.joinToString(", ")}", style = MaterialTheme.typography.bodySmall)
+            }
+            // --- REMOVE BUTTON FOR MONITOR ---
+            IconButton(onClick = onRemove) {
+                Icon(Icons.Default.Delete, contentDescription = "Unlink User", tint = MaterialTheme.colorScheme.error)
             }
         }
     }

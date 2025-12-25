@@ -130,6 +130,8 @@ class AppViewModel @Inject constructor(
             if (linkedIds.isNotEmpty()) {
                 val users = linkedIds.map { id -> authRepo.getUserProfile(id) }
                 state = state.copy(linkedProtectedUsers = users)
+            } else {
+                state = state.copy(linkedProtectedUsers = emptyList())
             }
         }
     }
@@ -182,6 +184,18 @@ class AppViewModel @Inject constructor(
             authRepo.removeAssociation(monitorId = monitorId, protectedId = me.uid)
             state = state.copy(isLoading = false, isRemovalSuccessful = true)
             refreshProtectedData(me.uid)
+        } catch (t: Throwable) {
+            state = state.copy(isLoading = false, error = t.message)
+        }
+    }
+
+    fun removeProtectedUser(protectedId: String) = viewModelScope.launch {
+        val me = state.me ?: return@launch
+        state = state.copy(isLoading = true, error = null, isRemovalSuccessful = false)
+        try {
+            authRepo.removeAssociation(monitorId = me.uid, protectedId = protectedId)
+            state = state.copy(isLoading = false, isRemovalSuccessful = true)
+            startMonitoringDashboard(me.uid) // Refresh dashboard for monitor
         } catch (t: Throwable) {
             state = state.copy(isLoading = false, error = t.message)
         }
