@@ -19,7 +19,6 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -30,23 +29,15 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import pt.a2025121082.isec.safetysec.viewmodel.AuthViewModel
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 
 /**
  * Login screen (Jetpack Compose).
- *
- * Responsibilities:
- * - Collect user credentials (email + password)
- * - Trigger login via AuthViewModel
- * - Show errors/messages using Snackbars
- * - Navigate on successful authentication
- * - Offer MFA helper: resend verification email if needed
- * - Offer password reset flow (navigate to dedicated screen)
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -56,20 +47,13 @@ fun LoginScreen(
     onNavigateToResetPassword: () -> Unit,
     onLoginSuccess: () -> Unit
 ) {
-    /** Local UI state for input fields (survives configuration changes). */
     var email by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
 
-    /** UI state exposed by the ViewModel. */
     val state = viewModel.uiState
-
-    /** Snackbar host to show one-off messages (errors, confirmations). */
     val snackbarHostState = remember { SnackbarHostState() }
-
-    /** Coroutine scope for showing snackbars from button callbacks. */
     val scope = rememberCoroutineScope()
 
-    // Show error in a snackbar and clear it in the ViewModel.
     LaunchedEffect(state.error) {
         val err = state.error
         if (!err.isNullOrBlank()) {
@@ -78,7 +62,6 @@ fun LoginScreen(
         }
     }
 
-    // Show informational message in a snackbar and clear it in the ViewModel.
     LaunchedEffect(state.message) {
         val msg = state.message
         if (!msg.isNullOrBlank()) {
@@ -87,19 +70,16 @@ fun LoginScreen(
         }
     }
 
-    // Navigate after a successful login.
     LaunchedEffect(state.isAuthenticated) {
         if (state.isAuthenticated) {
             onLoginSuccess()
         }
     }
 
-    /** Used to conditionally display the "Resend verification email" action. */
     val isEmailVerificationProblem =
         (state.error ?: "").contains("verification", ignoreCase = true)
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("SafetYSec") }) },
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { innerPadding ->
 
@@ -111,9 +91,10 @@ fun LoginScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Text("Login to SafetYSec", style = MaterialTheme.typography.headlineMedium)
+            // Tytuł sekcji (bez nazwy aplikacji, tylko akcja)
+            Text("Login", style = MaterialTheme.typography.headlineMedium)
             Spacer(Modifier.height(32.dp))
-
+            
             // Email input
             OutlinedTextField(
                 value = email,
@@ -175,7 +156,6 @@ fun LoginScreen(
                 }
             }
 
-            // MFA helper: if email is not verified, allow resending the verification email.
             if (isEmailVerificationProblem) {
                 Spacer(Modifier.height(8.dp))
                 TextButton(
@@ -188,7 +168,6 @@ fun LoginScreen(
 
             Spacer(Modifier.height(20.dp))
 
-            // Password reset: navigate to dedicated reset screen.
             TextButton(
                 onClick = onNavigateToResetPassword,
                 enabled = !state.isLoading
@@ -198,7 +177,6 @@ fun LoginScreen(
 
             Spacer(Modifier.height(8.dp))
 
-            // Navigate to registration screen.
             TextButton(
                 onClick = onNavigateToRegistration,
                 enabled = !state.isLoading
