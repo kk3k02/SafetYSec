@@ -45,6 +45,7 @@ data class AppUiState(
     val rulesForSelectedProtected: MonitorRulesBundle? = null,
     val isLinkingSuccessful: Boolean = false,
     val isRequestSuccessful: Boolean = false,
+    val isRemovalSuccessful: Boolean = false,
 
     // Alert cancel window state
     val isCancelWindowOpen: Boolean = false,
@@ -172,6 +173,22 @@ class AppViewModel @Inject constructor(
 
     fun consumeLinkingSuccess() {
         state = state.copy(isLinkingSuccessful = false)
+    }
+
+    fun removeMonitor(monitorId: String) = viewModelScope.launch {
+        val me = state.me ?: return@launch
+        state = state.copy(isLoading = true, error = null, isRemovalSuccessful = false)
+        try {
+            authRepo.removeAssociation(monitorId = monitorId, protectedId = me.uid)
+            state = state.copy(isLoading = false, isRemovalSuccessful = true)
+            refreshProtectedData(me.uid)
+        } catch (t: Throwable) {
+            state = state.copy(isLoading = false, error = t.message)
+        }
+    }
+
+    fun consumeRemovalSuccess() {
+        state = state.copy(isRemovalSuccessful = false)
     }
 
     // Rules

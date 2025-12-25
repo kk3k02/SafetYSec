@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -117,9 +118,17 @@ fun ProtectedWindowsScreen(vm: AppViewModel) {
 fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
     val st = vm.state
     var showOtpDialog by remember { mutableStateOf(false) }
+    var showRemovalSuccessDialog by remember { mutableStateOf(false) }
 
     // State for Pending Request Dialog
     var pendingRequestMonitor by remember { mutableStateOf<Pair<User, List<RuleType>>?>(null) }
+
+    // Observe removal success
+    LaunchedEffect(st.isRemovalSuccessful) {
+        if (st.isRemovalSuccessful) {
+            showRemovalSuccessDialog = true
+        }
+    }
 
     // Detect if any monitor has a "requested" list that isn't fully in "authorizedTypes"
     LaunchedEffect(st.monitorRuleBundles, st.myLinkedMonitors) {
@@ -127,7 +136,6 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
             val bundle = st.monitorRuleBundles.find { it.monitorId == monitor.uid }
             if (bundle != null && bundle.requested.isNotEmpty()) {
                 val requestedTypes = bundle.requested.map { it.type }
-                // If there are requested types not yet authorized
                 val notYetAuthorized = requestedTypes.filter { !bundle.authorizedTypes.contains(it) }
                 if (notYetAuthorized.isNotEmpty()) {
                     pendingRequestMonitor = monitor to requestedTypes
@@ -136,7 +144,6 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
         }
     }
 
-    // When a new OTP is generated, show the dialog automatically
     LaunchedEffect(st.myOtp) {
         if (st.myOtp != null) {
             showOtpDialog = true
@@ -153,7 +160,6 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
             Text("Monitors & Permissions", style = MaterialTheme.typography.titleLarge)
             Spacer(Modifier.height(8.dp))
 
-            // OTP generation
             Button(
                 onClick = { vm.generateOtp() },
                 modifier = Modifier.fillMaxWidth(),
@@ -163,7 +169,6 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
             }
         }
 
-        // --- Linked Monitors Section ---
         item {
             Text("Your Monitors", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         }
@@ -173,7 +178,6 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
             }
         } else {
             items(st.myLinkedMonitors) { monitor ->
-                // Find or create rule bundle for this monitor
                 val bundle = st.monitorRuleBundles.find { it.monitorId == monitor.uid }
                 
                 Card(
@@ -184,9 +188,12 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.size(40.dp))
                             Spacer(Modifier.width(12.dp))
-                            Column {
+                            Column(Modifier.weight(1f)) {
                                 Text(monitor.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                                 Text(monitor.email, style = MaterialTheme.typography.bodySmall)
+                            }
+                            IconButton(onClick = { vm.removeMonitor(monitor.uid) }) {
+                                Icon(Icons.Default.Delete, contentDescription = "Remove Monitor", tint = MaterialTheme.colorScheme.error)
                             }
                         }
                         
@@ -224,9 +231,12 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
                 }
             }
         }
+        
+        item {
+            st.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp)) }
+        }
     }
 
-    // OTP Display Dialog
     if (showOtpDialog && st.myOtp != null) {
         AlertDialog(
             onDismissRequest = { showOtpDialog = false },
@@ -260,7 +270,26 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
         )
     }
 
-    // --- NEW: Pending Request Dialog ---
+    // Removal Success Dialog
+    if (showRemovalSuccessDialog) {
+        AlertDialog(
+            onDismissRequest = { 
+                showRemovalSuccessDialog = false
+                vm.consumeRemovalSuccess()
+            },
+            title = { Text("Monitor Removed") },
+            text = { Text("The monitor has been successfully unlinked from your account.") },
+            confirmButton = {
+                TextButton(onClick = { 
+                    showRemovalSuccessDialog = false
+                    vm.consumeRemovalSuccess()
+                }) {
+                    Text("OK")
+                }
+            }
+        )
+    }
+
     pendingRequestMonitor?.let { (monitor, requestedTypes) ->
         AlertDialog(
             onDismissRequest = { pendingRequestMonitor = null },
@@ -297,7 +326,6 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
 
 /**
  * Protected profile screen.
- * Consistent UI with MonitorProfileScreen.
  */
 @Composable
 fun ProtectedProfileScreen(
@@ -310,7 +338,6 @@ fun ProtectedProfileScreen(
 
     var pin by remember { mutableStateOf("") }
 
-    // Load account info when this screen is first composed.
     LaunchedEffect(Unit) {
         authVm.loadAccountInfo()
     }
@@ -319,7 +346,6 @@ fun ProtectedProfileScreen(
         Text("Account Settings", style = MaterialTheme.typography.titleLarge)
         Spacer(Modifier.height(16.dp))
 
-        // Account info card
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp)) {
                 Text("Name: ${authSt.accountName ?: "-"}", style = MaterialTheme.typography.bodyLarge)
@@ -331,7 +357,6 @@ fun ProtectedProfileScreen(
         Text("Security Settings", style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(8.dp))
 
-        // Alert cancel PIN input
         OutlinedTextField(
             value = pin,
             onValueChange = { pin = it },
@@ -357,7 +382,6 @@ fun ProtectedProfileScreen(
             Text("Switch to Monitor Mode")
         }
 
-        // Show errors/messages if any
         authSt.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp)) }
         authSt.message?.let { Text(it, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 8.dp)) }
         st.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp)) }
