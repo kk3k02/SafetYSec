@@ -114,7 +114,9 @@ private fun SafetYSecApp(
             composable(Routes.REGISTER) {
                 RegistrationScreen(
                     viewModel = authViewModel,
-                    onNavigateToLogin = { navController.navigate(Routes.LOGIN) { popUpTo(Routes.REGISTER) { inclusive = true } } }
+                    onNavigateToLogin = {
+                        navController.navigate(Routes.LOGIN) { popUpTo(Routes.REGISTER) { inclusive = true } }
+                    }
                 )
             }
             composable(Routes.RESET_PASSWORD) {
@@ -153,7 +155,7 @@ private fun SafetYSecApp(
             }
         }
 
-        // Fix: Use the pendingAlerts queue to show the popup
+        // --- GLOBAL ALERT POPUP (QUEUE) ---
         appState.pendingAlerts.firstOrNull()?.let { alert ->
             MonitorGlobalAlertPopup(
                 alert = alert,

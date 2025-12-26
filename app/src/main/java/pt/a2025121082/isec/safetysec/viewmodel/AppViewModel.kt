@@ -21,6 +21,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 import pt.a2025121082.isec.safetysec.data.model.*
 import pt.a2025121082.isec.safetysec.data.repository.AlertRepository
 import pt.a2025121082.isec.safetysec.data.repository.AuthRepository
@@ -50,7 +51,12 @@ data class AppUiState(
     val cancelSecondsLeft: Int = 0,
     val typedCancelCode: String? = null,
     val isFallDetectionEnabled: Boolean = false,
-    val pendingAlerts: List<Alert> = emptyList()
+    val pendingAlerts: List<Alert> = emptyList(),
+    val userInactivitySeconds: Int = 0,
+    val inactivityAuthorized: Boolean = false,
+    val inactivityDurationMin: Int = 0,
+    val showInactivityAlertPopup: Int? = null,
+    val isSecurityUpdateSuccessful: Boolean = false 
 )
 
 @HiltViewModel
@@ -65,6 +71,7 @@ class AppViewModel @Inject constructor(
         private set
 
     private var alertsListenerJob: Job? = null
+    private var inactivityJob: Job? = null
     private var isFirstLoad = true
     private val processedAlertIds = mutableSetOf<String>()
 
@@ -153,17 +160,10 @@ class AppViewModel @Inject constructor(
         }
     }
 
-    /**
-     * TRWAŁE USUWANIE ALERTU: Usuwa pierwszy alert z kolejki ORAZ z bazy danych Monitora.
-     */
     fun dismissIncomingAlert() = viewModelScope.launch {
         val me = state.me ?: return@launch
         val alertToDismiss = state.pendingAlerts.firstOrNull() ?: return@launch
-        
-        // 1) Remove from Firestore so it doesn't pop up on next login
         alertRepo.deleteAlertFromMonitor(me.uid, alertToDismiss.id)
-        
-        // 2) Update local UI state
         state = state.copy(pendingAlerts = state.pendingAlerts.drop(1))
     }
 
@@ -188,9 +188,39 @@ class AppViewModel @Inject constructor(
         try {
             val me = authRepo.getUserProfile()
             state = state.copy(me = me, isLoading = false)
-            if (me.roles.contains("Protected")) refreshProtectedData(me.uid)
+            if (me.roles.contains("Protected")) {
+                refreshProtectedData(me.uid)
+                startInactivityTimer()
+            }
             if (me.roles.contains("Monitor")) startMonitoringDashboard(me.uid, null)
         } catch (t: Throwable) { state = state.copy(isLoading = false, error = t.message) }
+    }
+
+    fun updateInactivityDuration(minutesStr: String) = viewModelScope.launch {
+        val minutes = minutesStr.toIntOrNull() ?: 15
+        state = state.copy(isLoading = true, error = null, isSecurityUpdateSuccessful = false)
+        try {
+            authRepo.updateInactivityDuration(minutes)
+            state = state.copy(isLoading = false, inactivityDurationMin = minutes, isSecurityUpdateSuccessful = true)
+            loadMyProfile()
+        } catch (t: Throwable) {
+            state = state.copy(isLoading = false, error = t.message)
+        }
+    }
+
+    fun updateCancelPin(pin: String) = viewModelScope.launch {
+        state = state.copy(isLoading = true, error = null, isSecurityUpdateSuccessful = false)
+        try {
+            authRepo.updateAlertCancelCode(pin)
+            state = state.copy(isLoading = false, isSecurityUpdateSuccessful = true)
+            loadMyProfile()
+        } catch (t: Throwable) {
+            state = state.copy(isLoading = false, error = t.message)
+        }
+    }
+
+    fun consumeSecurityUpdateSuccess() { 
+        state = state.copy(isSecurityUpdateSuccessful = false) 
     }
 
     private suspend fun refreshProtectedData(protectedUid: String) {
@@ -199,11 +229,69 @@ class AppViewModel @Inject constructor(
             val windows = monitoringRepo.listTimeWindows(protectedUid)
             val history = alertRepo.getProtectedAlertHistory(protectedUid)
             val me = authRepo.getUserProfile(protectedUid)
-            state = state.copy(monitorRuleBundles = bundles, timeWindows = windows, myAlerts = history, myLinkedMonitors = me.monitors.map { authRepo.getUserProfile(it) })
-        } catch (t: Throwable) { state = state.copy(error = t.message) }
+            
+            val inactivityBundle = bundles.find { it.authorizedTypes.contains(RuleType.INACTIVITY) }
+            val duration = me.inactivityDurationMin
+
+            state = state.copy(
+                monitorRuleBundles = bundles, 
+                timeWindows = windows, 
+                myAlerts = history, 
+                myLinkedMonitors = me.monitors.map { authRepo.getUserProfile(it) },
+                inactivityAuthorized = inactivityBundle != null,
+                inactivityDurationMin = duration
+            )
+        } catch (t: Throwable) {
+            state = state.copy(error = t.message)
+        }
     }
 
-    fun clear() { alertsListenerJob?.cancel(); state = AppUiState() }
+    private fun startInactivityTimer() {
+        inactivityJob?.cancel()
+        inactivityJob = viewModelScope.launch {
+            while (true) {
+                delay(1000)
+                if (state.inactivityAuthorized) {
+                    state = state.copy(userInactivitySeconds = state.userInactivitySeconds + 1)
+                    if (state.userInactivitySeconds >= 60) {
+                        triggerInactivityAlert()
+                        resetInactivityTimer()
+                    }
+                } else {
+                    state = state.copy(userInactivitySeconds = 0)
+                }
+            }
+        }
+    }
+
+    fun resetInactivityTimer() {
+        state = state.copy(userInactivitySeconds = 0)
+    }
+
+    private fun triggerInactivityAlert() = viewModelScope.launch {
+        val me = state.me ?: return@launch
+        val sent = alertRepo.triggerAlert(
+            ruleType = RuleType.INACTIVITY,
+            user = me,
+            cancelCodeProvider = { null },
+            locationProvider = { GeoPoint(0.0, 0.0) },
+            videoUriProvider = { null }
+        )
+        if (sent) {
+            state = state.copy(showInactivityAlertPopup = state.inactivityDurationMin)
+            loadMyProfile()
+        }
+    }
+
+    fun dismissInactivityPopup() {
+        state = state.copy(showInactivityAlertPopup = null)
+    }
+
+    fun clear() { 
+        alertsListenerJob?.cancel()
+        inactivityJob?.cancel()
+        state = AppUiState() 
+    }
     fun consumeLinkingSuccess() { state = state.copy(isLinkingSuccessful = false) }
     fun consumeAlertSentSuccess() { state = state.copy(isAlertSent = false) }
     fun consumeRemovalSuccess() { state = state.copy(isRemovalSuccessful = false) }
@@ -217,9 +305,9 @@ class AppViewModel @Inject constructor(
     fun removeProtectedUser(protectedId: String) = viewModelScope.launch { try { authRepo.removeAssociation(state.me!!.uid, protectedId); state = state.copy(isRemovalSuccessful = true, linkedProtectedUsers = state.linkedProtectedUsers.filter { it.uid != protectedId }) } catch (t: Throwable) { state = state.copy(error = t.message) } }
     fun requestRulesForProtected(pUid: String, types: List<RuleType>, params: RuleParams) = viewModelScope.launch { try { val rules = types.map { MonitoringRule(it, params, true) }; monitoringRepo.requestRules(pUid, state.me!!.uid, rules); state = state.copy(isRequestSuccessful = true); loadRulesForProtected(pUid) } catch (t: Throwable) { state = state.copy(error = t.message) } }
     fun loadRulesForProtected(pUid: String) = viewModelScope.launch { try { val bundles = monitoringRepo.getRulesForProtected(pUid); state = state.copy(rulesForSelectedProtected = bundles.find { it.monitorId == state.me!!.uid }) } catch (t: Throwable) { state = state.copy(error = t.message) } }
-    fun saveAuthorizations(mUid: String, auth: List<RuleType>) = viewModelScope.launch { try { monitoringRepo.saveAuthorizations(state.me!!.uid, mUid, auth); refreshProtectedData(state.me!!.uid) } catch (t: Throwable) { state = state.copy(error = t.message) } }
+    
+    fun saveAuthorizations(mUid: String, auth: List<RuleType>, inactivityMin: Int?) = viewModelScope.launch { try { monitoringRepo.saveAuthorizations(state.me!!.uid, mUid, auth, inactivityMin); refreshProtectedData(state.me!!.uid) } catch (t: Throwable) { state = state.copy(error = t.message) } }
     fun addTimeWindow(days: List<Int>, s: Int, e: Int) = viewModelScope.launch { val w = TimeWindow(daysOfWeek = days, startHour = s, endHour = e); if (!w.checkValid()) return@launch; try { monitoringRepo.addTimeWindow(state.me!!.uid, w); state = state.copy(timeWindows = state.timeWindows + w, isAdditionSuccessful = true) } catch (t: Throwable) { state = state.copy(error = t.message) } }
     fun removeTimeWindow(wId: String) = viewModelScope.launch { try { monitoringRepo.deleteTimeWindow(state.me!!.uid, wId); state = state.copy(isRemovalSuccessful = true, timeWindows = state.timeWindows.filter { it.id != wId }) } catch (t: Throwable) { state = state.copy(error = t.message) } }
     fun toggleFallDetection(ctx: Context) { val n = !state.isFallDetectionEnabled; val i = Intent(ctx, FallDetectionService::class.java); if (n) { if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) ctx.startForegroundService(i) else ctx.startService(i) } else ctx.stopService(i); state = state.copy(isFallDetectionEnabled = n) }
-    fun updateCancelPin(p: String) = viewModelScope.launch { try { authRepo.updateAlertCancelCode(p); loadMyProfile() } catch (t: Throwable) { state = state.copy(error = t.message) } }
 }
