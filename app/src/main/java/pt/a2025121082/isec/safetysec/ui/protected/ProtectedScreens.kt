@@ -1,5 +1,10 @@
 package pt.a2025121082.isec.safetysec.ui.protected
 
+import android.content.Context
+import android.os.Build
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -25,6 +30,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import kotlinx.coroutines.delay
 import pt.a2025121082.isec.safetysec.data.model.Alert
 import pt.a2025121082.isec.safetysec.data.model.RuleType
 import pt.a2025121082.isec.safetysec.data.model.TimeWindow
@@ -324,6 +330,9 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
                 ) {
+                    val authorized = remember(monitor.uid, bundle?.authorizedTypes) {
+                        mutableStateListOf<RuleType>().apply { addAll(bundle?.authorizedTypes ?: emptyList()) }
+                    }
                     Column(Modifier.padding(12.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.size(40.dp))
@@ -338,9 +347,7 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
                         }
                         Divider(Modifier.padding(vertical = 12.dp))
                         Text("Grant Permissions:", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
-                        val authorized = remember(monitor.uid, bundle?.authorizedTypes) {
-                            mutableStateListOf<RuleType>().apply { addAll(bundle?.authorizedTypes ?: emptyList()) }
-                        }
+                        
                         RuleType.values().forEach { type ->
                             Row(
                                 Modifier.fillMaxWidth(),
@@ -464,6 +471,32 @@ fun ProtectedProfileScreen(
 @Composable
 fun ProtectedCancelAlertDialog(vm: AppViewModel) {
     val st = vm.state
+    val context = LocalContext.current
+
+    // VIBRATION LOGIC
+    LaunchedEffect(st.isCancelWindowOpen) {
+        if (st.isCancelWindowOpen) {
+            val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val manager = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
+                manager.defaultVibrator
+            } else {
+                @Suppress("DEPRECATION")
+                context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+            }
+
+            // Pattern: vibration for 500ms, pause for 500ms
+            while (st.isCancelWindowOpen) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    vibrator.vibrate(VibrationEffect.createOneShot(500, VibrationEffect.DEFAULT_AMPLITUDE))
+                } else {
+                    @Suppress("DEPRECATION")
+                    vibrator.vibrate(500)
+                }
+                delay(1000)
+            }
+        }
+    }
+
     if (st.isCancelWindowOpen) {
         var typed by remember { mutableStateOf("") }
         fun formatTime(s: Int) = "00:${s.toString().padStart(2, '0')}"
