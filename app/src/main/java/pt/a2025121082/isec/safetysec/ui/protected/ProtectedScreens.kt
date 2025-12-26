@@ -250,7 +250,8 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
     val st = vm.state
     var showOtpDialog by remember { mutableStateOf(false) }
     var showRemovalSuccessDialog by remember { mutableStateOf(false) }
-    var showUpdateSuccessDialog by remember { mutableStateOf(false) } // New local state
+    var showUpdateSuccessDialog by remember { mutableStateOf(false) }
+    var showInactivityDurationDialog by remember { mutableStateOf<String?>(null) } // Monitor UID
     var pendingRequestMonitor by remember { mutableStateOf<Pair<User, List<RuleType>>?>(null) }
 
     LaunchedEffect(st.isRemovalSuccessful) { if (st.isRemovalSuccessful) showRemovalSuccessDialog = true }
@@ -280,10 +281,16 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
         } else {
             items(st.myLinkedMonitors) { monitor ->
                 val bundle = st.monitorRuleBundles.find { it.monitorId == monitor.uid }
+                val authorized = remember(monitor.uid, bundle?.authorizedTypes) {
+                    mutableStateListOf<RuleType>().apply { addAll(bundle?.authorizedTypes ?: emptyList()) }
+                }
+                
+                // Track selected inactivity duration for display
+                var inactivityDuration by remember(monitor.uid) {
+                    mutableStateOf(bundle?.requested?.find { it.type == RuleType.INACTIVITY }?.params?.inactivityDurationMin?.toString() ?: "")
+                }
+
                 Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-                    val authorized = remember(monitor.uid, bundle?.authorizedTypes) {
-                        mutableStateListOf<RuleType>().apply { addAll(bundle?.authorizedTypes ?: emptyList()) }
-                    }
                     Column(Modifier.padding(12.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.size(40.dp))
@@ -297,12 +304,26 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
                         Divider(Modifier.padding(vertical = 12.dp))
                         Text("Grant Permissions:", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                         RuleType.values().forEach { type ->
+                            val label = if (type == RuleType.INACTIVITY && inactivityDuration.isNotBlank()) {
+                                "${type.displayName()} ($inactivityDuration min)"
+                            } else {
+                                type.displayName()
+                            }
+
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                Text(text = type.displayName(), style = MaterialTheme.typography.bodyMedium)
+                                Text(text = label, style = MaterialTheme.typography.bodyMedium)
                                 Switch(
                                     checked = authorized.contains(type), 
                                     onCheckedChange = { on -> 
-                                        if (on) authorized.add(type) else authorized.remove(type) 
+                                        if (on) {
+                                            if (type == RuleType.INACTIVITY) {
+                                                showInactivityDurationDialog = monitor.uid
+                                            } else {
+                                                authorized.add(type)
+                                            }
+                                        } else {
+                                            authorized.remove(type)
+                                        }
                                     }
                                 )
                             }
@@ -311,11 +332,44 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
                         Button(
                             onClick = { 
                                 vm.saveAuthorizations(monitor.uid, authorized.toList())
-                                showUpdateSuccessDialog = true // Trigger local success dialog
+                                showUpdateSuccessDialog = true 
                             }, 
                             modifier = Modifier.fillMaxWidth()
                         ) { Text("Save Permissions") }
                     }
+                }
+
+                if (showInactivityDurationDialog == monitor.uid) {
+                    var tempDuration by remember { mutableStateOf(inactivityDuration.ifBlank { "15" }) }
+                    AlertDialog(
+                        onDismissRequest = { showInactivityDurationDialog = null },
+                        title = { Text("Inactivity Duration") },
+                        text = {
+                            Column {
+                                Text("After how many minutes of inactivity should the alert be sent?")
+                                Spacer(Modifier.height(8.dp))
+                                OutlinedTextField(
+                                    value = tempDuration,
+                                    onValueChange = { tempDuration = it },
+                                    label = { Text("Minutes") },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                        },
+                        confirmButton = {
+                            Button(onClick = {
+                                if (tempDuration.isNotBlank()) {
+                                    inactivityDuration = tempDuration
+                                    authorized.add(RuleType.INACTIVITY)
+                                    showInactivityDurationDialog = null
+                                }
+                            }) { Text("Confirm") }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showInactivityDurationDialog = null }) { Text("Cancel") }
+                        }
+                    )
                 }
             }
         }
