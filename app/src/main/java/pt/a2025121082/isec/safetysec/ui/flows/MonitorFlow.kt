@@ -1,6 +1,6 @@
 package pt.a2025121082.isec.safetysec.ui.flows
 
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Group
@@ -42,6 +42,7 @@ fun MonitorFlow(
                         MRoutes.Dash -> "Monitor Dashboard"
                         MRoutes.Link -> "Link Accounts"
                         MRoutes.Rules -> "Monitoring Rules"
+                        MRoutes.Profile -> "Profile Settings"
                         else -> "SafetYSec"
                     }
                     Text(title)
@@ -97,15 +98,13 @@ fun MonitorFlow(
             }
         }
     ) { innerPadding ->
-        NavHost(
-            navController = nav, 
-            startDestination = MRoutes.Dash,
-            modifier = Modifier.padding(innerPadding)
-        ) {
-            composable(MRoutes.Dash) { MonitorDashboardScreen(appViewModel) }
-            composable(MRoutes.Link) { MonitorLinkScreen(appViewModel) }
-            composable(MRoutes.Rules) { MonitorRulesScreen(appViewModel) }
-            composable(MRoutes.Profile) { MonitorProfileScreen(onSwitchToProtected) }
+        Box(Modifier.padding(innerPadding)) {
+            NavHost(navController = nav, startDestination = MRoutes.Dash) {
+                composable(MRoutes.Dash) { MonitorDashboardScreen(appViewModel) }
+                composable(MRoutes.Link) { MonitorLinkScreen(appViewModel) }
+                composable(MRoutes.Rules) { MonitorRulesScreen(appViewModel) }
+                composable(MRoutes.Profile) { MonitorProfileScreen(onSwitchToProtected) }
+            }
         }
     }
 }

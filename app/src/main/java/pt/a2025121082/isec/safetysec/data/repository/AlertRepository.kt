@@ -34,7 +34,6 @@ class AlertRepository @Inject constructor(
         locationProvider: suspend () -> GeoPoint?,
         videoUriProvider: suspend () -> Uri?
     ): Boolean {
-        // Create initial alert object with status CANCELLED (as default if not finished)
         val alert = Alert(
             type = ruleType,
             protectedId = user.uid,
@@ -43,35 +42,41 @@ class AlertRepository @Inject constructor(
             status = "CANCELLED"
         )
 
-        // 1) Wait for 10s cancel window
         val cancelled = waitForCancel(user.alertCancelCode, cancelCodeProvider)
         
         if (cancelled) {
-            // Save to Protected's history as CANCELLED
             saveAlertToProtected(user.uid, alert.copy(status = "CANCELLED"))
             return false
         }
 
-        // 2) If not cancelled, update status to SENT
         val sentAlert = alert.copy(status = "SENT")
-        
-        // Save to Protected's history
         saveAlertToProtected(user.uid, sentAlert)
 
-        // 3) Send to all linked Monitors
         if (user.monitors.isNotEmpty()) {
             user.monitors.forEach { monitorId ->
                 firestore.collection("users").document(monitorId)
                     .collection("alerts").document(sentAlert.id).set(sentAlert).await()
             }
         }
-        
         return true
     }
 
     private suspend fun saveAlertToProtected(uid: String, alert: Alert) {
         firestore.collection("users").document(uid)
             .collection("my_alerts").document(alert.id).set(alert).await()
+    }
+
+    /**
+     * Removes the alert from the monitor's active alerts collection.
+     * This ensures the alert won't pop up again after being dismissed.
+     */
+    suspend fun deleteAlertFromMonitor(monitorUid: String, alertId: String) {
+        try {
+            firestore.collection("users").document(monitorUid)
+                .collection("alerts").document(alertId).delete().await()
+        } catch (e: Exception) {
+            Log.e("AlertRepository", "Failed to delete alert $alertId for monitor $monitorUid", e)
+        }
     }
 
     suspend fun getProtectedAlertHistory(uid: String): List<Alert> {
