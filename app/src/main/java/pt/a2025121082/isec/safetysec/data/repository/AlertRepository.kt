@@ -20,14 +20,9 @@ class AlertRepository @Inject constructor(
     private val firestore: FirebaseFirestore,
     private val storage: FirebaseStorage
 ) {
-    // SharedFlow to communicate between Background Service and UI
     private val _detectionEvents = MutableSharedFlow<RuleType>(extraBufferCapacity = 1)
     val detectionEvents = _detectionEvents.asSharedFlow()
 
-    /**
-     * Notify that a sensor detected a potential alert (like a fall).
-     * This will be picked up by the ViewModel to show the UI dialog.
-     */
     suspend fun emitDetectionEvent(type: RuleType) {
         _detectionEvents.emit(type)
     }
@@ -39,29 +34,52 @@ class AlertRepository @Inject constructor(
         locationProvider: suspend () -> GeoPoint?,
         videoUriProvider: suspend () -> Uri?
     ): Boolean {
-        // 1) Wait for 10s cancel window
-        val cancelled = waitForCancel(user.alertCancelCode, cancelCodeProvider)
-        if (cancelled) {
-            Log.d("AlertRepository", "Alert cancelled by user.")
-            return false
-        }
-
-        // 2) Send to Firestore
-        val location = locationProvider()
+        // Create initial alert object with status CANCELLED (as default if not finished)
         val alert = Alert(
             type = ruleType,
             protectedId = user.uid,
             protectedName = user.name,
-            location = location
+            location = locationProvider(),
+            status = "CANCELLED"
         )
 
-        if (user.monitors.isEmpty()) return true
-
-        user.monitors.forEach { monitorId ->
-            firestore.collection("users").document(monitorId)
-                .collection("alerts").document(alert.id).set(alert).await()
+        // 1) Wait for 10s cancel window
+        val cancelled = waitForCancel(user.alertCancelCode, cancelCodeProvider)
+        
+        if (cancelled) {
+            // Save to Protected's history as CANCELLED
+            saveAlertToProtected(user.uid, alert.copy(status = "CANCELLED"))
+            return false
         }
+
+        // 2) If not cancelled, update status to SENT
+        val sentAlert = alert.copy(status = "SENT")
+        
+        // Save to Protected's history
+        saveAlertToProtected(user.uid, sentAlert)
+
+        // 3) Send to all linked Monitors
+        if (user.monitors.isNotEmpty()) {
+            user.monitors.forEach { monitorId ->
+                firestore.collection("users").document(monitorId)
+                    .collection("alerts").document(sentAlert.id).set(sentAlert).await()
+            }
+        }
+        
         return true
+    }
+
+    private suspend fun saveAlertToProtected(uid: String, alert: Alert) {
+        firestore.collection("users").document(uid)
+            .collection("my_alerts").document(alert.id).set(alert).await()
+    }
+
+    suspend fun getProtectedAlertHistory(uid: String): List<Alert> {
+        val snapshot = firestore.collection("users").document(uid)
+            .collection("my_alerts")
+            .orderBy("timestamp", com.google.firebase.firestore.Query.Direction.DESCENDING)
+            .get().await()
+        return snapshot.toObjects(Alert::class.java)
     }
 
     private suspend fun waitForCancel(

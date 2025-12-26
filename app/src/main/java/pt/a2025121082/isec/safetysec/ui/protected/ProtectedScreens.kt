@@ -71,23 +71,38 @@ fun ProtectedHistoryScreen(vm: AppViewModel) {
 
 @Composable
 fun AlertHistoryItem(alert: Alert, sdf: SimpleDateFormat) {
+    val isCancelled = alert.status == "CANCELLED"
+    
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF1F1))
+        colors = CardDefaults.cardColors(
+            containerColor = if (isCancelled) Color(0xFFF5F5F5) else Color(0xFFFFF1F1)
+        )
     ) {
         Column(Modifier.padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Warning, contentDescription = null, tint = Color.Red)
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    text = "${alert.type.displayName()} ALERT",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = Color.Red,
-                    fontWeight = FontWeight.Bold
+                Icon(
+                    imageVector = Icons.Default.Warning, 
+                    contentDescription = null, 
+                    tint = if (isCancelled) Color.Gray else Color.Red
                 )
-                Spacer(Modifier.weight(1f))
+                Spacer(Modifier.width(8.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        text = "${alert.type.displayName()} ALERT",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = if (isCancelled) Color.DarkGray else Color.Red,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = if (isCancelled) "Status: CANCELLED" else "Status: SENT TO MONITOR",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (isCancelled) Color.Gray else Color(0xFFD32F2F)
+                    )
+                }
                 Text(sdf.format(Date(alert.timestamp)), style = MaterialTheme.typography.bodySmall)
             }
+            
             Spacer(Modifier.height(4.dp))
             if (alert.location != null) {
                 Text(

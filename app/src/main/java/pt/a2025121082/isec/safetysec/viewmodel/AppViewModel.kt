@@ -41,7 +41,7 @@ data class AppUiState(
     val isRequestSuccessful: Boolean = false,
     val isRemovalSuccessful: Boolean = false,
     val isAdditionSuccessful: Boolean = false,
-    val isAlertSent: Boolean = false, // Added this field
+    val isAlertSent: Boolean = false,
     val isCancelWindowOpen: Boolean = false,
     val cancelSecondsLeft: Int = 0,
     val typedCancelCode: String? = null,
@@ -62,6 +62,7 @@ class AppViewModel @Inject constructor(
     private var alertsListenerJob: Job? = null
 
     init {
+        // Listen for sensor events from background services
         viewModelScope.launch {
             alertRepo.detectionEvents.collectLatest { type ->
                 triggerAlertWithTimer(type)
@@ -101,10 +102,11 @@ class AppViewModel @Inject constructor(
         if (!sent) {
             state = state.copy(error = "Alert cancelled by user.")
         } else {
-            // SHOW THE SUCCESS POPUP
             state = state.copy(isAlertSent = true)
-            loadMyProfile()
         }
+        
+        // REFRESH HISTORY after action
+        refreshProtectedData(me.uid)
     }
 
     fun consumeAlertSentSuccess() {
@@ -140,11 +142,17 @@ class AppViewModel @Inject constructor(
         try {
             val bundles = monitoringRepo.getRulesForProtected(protectedUid)
             val windows = monitoringRepo.listTimeWindows(protectedUid)
+            
+            // FETCH HISTORY from AlertRepository
+            val history = alertRepo.getProtectedAlertHistory(protectedUid)
+            
             val me = authRepo.getUserProfile(protectedUid)
             val monitors = me.monitors.map { authRepo.getUserProfile(it) }
+            
             state = state.copy(
                 monitorRuleBundles = bundles, 
                 timeWindows = windows, 
+                myAlerts = history, // UPDATE LOCAL STATE
                 myLinkedMonitors = monitors
             )
         } catch (t: Throwable) {
