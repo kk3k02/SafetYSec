@@ -13,6 +13,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -96,14 +97,12 @@ fun ProtectedWindowsScreen(vm: AppViewModel) {
     var showRemovalSuccessDialog by remember { mutableStateOf(false) }
     var showAdditionSuccessDialog by remember { mutableStateOf(false) }
 
-    // Observe removal success
     LaunchedEffect(st.isRemovalSuccessful) {
         if (st.isRemovalSuccessful) {
             showRemovalSuccessDialog = true
         }
     }
 
-    // Observe addition success
     LaunchedEffect(st.isAdditionSuccessful) {
         if (st.isAdditionSuccessful) {
             showAdditionSuccessDialog = true
@@ -146,7 +145,6 @@ fun ProtectedWindowsScreen(vm: AppViewModel) {
         )
     }
 
-    // Window Addition Success Dialog
     if (showAdditionSuccessDialog) {
         AlertDialog(
             onDismissRequest = { 
@@ -166,7 +164,6 @@ fun ProtectedWindowsScreen(vm: AppViewModel) {
         )
     }
 
-    // Window Removal Success Dialog
     if (showRemovalSuccessDialog) {
         AlertDialog(
             onDismissRequest = { 
@@ -494,6 +491,7 @@ fun ProtectedProfileScreen(
 ) {
     val st = vm.state
     val authSt = authVm.uiState
+    val context = LocalContext.current
 
     var pin by remember { mutableStateOf("") }
 
@@ -515,6 +513,23 @@ fun ProtectedProfileScreen(
         Spacer(Modifier.height(24.dp))
         Text("Security Settings", style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(8.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text("Fall Detection Service", style = MaterialTheme.typography.bodyLarge)
+                Text("Monitor falls using accelerometer", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+            }
+            Switch(
+                checked = st.isFallDetectionEnabled,
+                onCheckedChange = { vm.toggleFallDetection(context) }
+            )
+        }
+
+        Spacer(Modifier.height(16.dp))
 
         OutlinedTextField(
             value = pin,
@@ -554,27 +569,55 @@ fun ProtectedCancelAlertDialog(vm: AppViewModel) {
 
     var typed by remember { mutableStateOf("") }
 
+    // Helper to format 10 -> "00:10"
+    fun formatTime(seconds: Int): String {
+        return "00:${seconds.toString().padStart(2, '0')}"
+    }
+
     AlertDialog(
         onDismissRequest = { },
-        title = { Text("Alert triggered") },
+        title = { 
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Warning, contentDescription = null, tint = Color.Red)
+                Spacer(Modifier.width(8.dp))
+                Text("Alert Triggered!", color = Color.Red, fontWeight = FontWeight.Bold)
+            }
+        },
         text = {
-            Column {
-                Text("You have ${st.cancelSecondsLeft}s to cancel.")
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                Text("An emergency alert is about to be sent.")
+                Spacer(Modifier.height(16.dp))
+                
+                // LIVE TIMER DISPLAY
+                Text(
+                    text = formatTime(st.cancelSecondsLeft),
+                    style = MaterialTheme.typography.displayMedium,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = if (st.cancelSecondsLeft <= 3) Color.Red else MaterialTheme.colorScheme.primary
+                )
+                
+                Spacer(Modifier.height(16.dp))
+                Text("Enter PIN to cancel:", style = MaterialTheme.typography.bodyMedium)
                 Spacer(Modifier.height(8.dp))
+                
                 OutlinedTextField(
                     value = typed,
                     onValueChange = { typed = it },
                     label = { Text("Enter PIN") },
                     visualTransformation = PasswordVisualTransformation(),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
                 )
             }
         },
         confirmButton = {
-            Button(onClick = { vm.tryCancelAlert(typed) }) { Text("Cancel") }
+            Button(
+                onClick = { vm.tryCancelAlert(typed) },
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+            ) { 
+                Text("Cancel Alert") 
+            }
         },
-        dismissButton = {
-            TextButton(onClick = {}) { Text("Wait") }
-        }
+        dismissButton = null // No wait button, user must enter PIN or wait
     )
 }

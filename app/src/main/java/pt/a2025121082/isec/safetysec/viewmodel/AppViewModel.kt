@@ -1,5 +1,8 @@
 package pt.a2025121082.isec.safetysec.viewmodel
 
+import android.content.Context
+import android.content.Intent
+import android.os.Build
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -10,6 +13,8 @@ import com.google.firebase.firestore.GeoPoint
 import com.google.firebase.firestore.Query
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import pt.a2025121082.isec.safetysec.data.model.*
@@ -17,6 +22,7 @@ import pt.a2025121082.isec.safetysec.data.repository.AlertRepository
 import pt.a2025121082.isec.safetysec.data.repository.AuthRepository
 import pt.a2025121082.isec.safetysec.data.repository.MonitorRulesBundle
 import pt.a2025121082.isec.safetysec.data.repository.MonitoringRepository
+import pt.a2025121082.isec.safetysec.util.FallDetectionService
 import javax.inject.Inject
 
 data class AppUiState(
@@ -37,7 +43,8 @@ data class AppUiState(
     val isAdditionSuccessful: Boolean = false,
     val isCancelWindowOpen: Boolean = false,
     val cancelSecondsLeft: Int = 0,
-    val typedCancelCode: String? = null
+    val typedCancelCode: String? = null,
+    val isFallDetectionEnabled: Boolean = false
 )
 
 @HiltViewModel
@@ -52,6 +59,61 @@ class AppViewModel @Inject constructor(
         private set
 
     private var alertsListenerJob: Job? = null
+
+    init {
+        // Listen for sensor events from background services
+        viewModelScope.launch {
+            alertRepo.detectionEvents.collectLatest { type ->
+                triggerAlertWithTimer(type)
+            }
+        }
+    }
+
+    /**
+     * Triggers an alert flow with a 10-second countdown on the UI.
+     */
+    private fun triggerAlertWithTimer(type: RuleType) = viewModelScope.launch {
+        val me = state.me ?: return@launch
+        if (state.isCancelWindowOpen) return@launch
+
+        // UI: Initialize countdown state
+        state = state.copy(isCancelWindowOpen = true, cancelSecondsLeft = 10, typedCancelCode = null)
+        
+        // Background ticker job to update the UI clock every second
+        val tickerJob = viewModelScope.launch {
+            while (state.cancelSecondsLeft > 0) {
+                delay(1000)
+                state = state.copy(cancelSecondsLeft = state.cancelSecondsLeft - 1)
+            }
+        }
+
+        // Wait for user input or timeout via Repository logic
+        val sent = alertRepo.triggerAlert(
+            ruleType = type,
+            user = me,
+            cancelCodeProvider = { state.typedCancelCode },
+            locationProvider = { GeoPoint(0.0, 0.0) },
+            videoUriProvider = { null }
+        )
+        
+        // Cleanup after dialog closes
+        tickerJob.cancel()
+        state = state.copy(isCancelWindowOpen = false, cancelSecondsLeft = 0, typedCancelCode = null)
+        
+        if (!sent) {
+            state = state.copy(error = "Alert cancelled by user.")
+        } else {
+            loadMyProfile() // Refresh history to see new alert
+        }
+    }
+
+    fun triggerPanic() {
+        triggerAlertWithTimer(RuleType.PANIC)
+    }
+
+    fun tryCancelAlert(typed: String) {
+        state = state.copy(typedCancelCode = typed)
+    }
 
     fun clear() {
         alertsListenerJob?.cancel()
@@ -231,6 +293,22 @@ class AppViewModel @Inject constructor(
         }
     }
 
+    fun toggleFallDetection(context: Context) {
+        val newState = !state.isFallDetectionEnabled
+        val intent = Intent(context, FallDetectionService::class.java)
+        
+        if (newState) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+        } else {
+            context.stopService(intent)
+        }
+        state = state.copy(isFallDetectionEnabled = newState)
+    }
+
     fun updateCancelPin(pin: String) = viewModelScope.launch {
         state = state.copy(isLoading = true, error = null)
         try {
@@ -242,13 +320,7 @@ class AppViewModel @Inject constructor(
         }
     }
 
-    fun triggerPanic() = viewModelScope.launch {
-        val me = state.me ?: return@launch
-        state = state.copy(isCancelWindowOpen = true, cancelSecondsLeft = 10)
-        val sent = alertRepo.triggerAlert(RuleType.PANIC, me, { state.typedCancelCode }, { GeoPoint(0.0, 0.0) }, { null })
-        state = state.copy(isCancelWindowOpen = false, cancelSecondsLeft = 0, typedCancelCode = null)
-        if (!sent) state = state.copy(error = "Alert cancelled.")
+    fun consumeAdditionSucess() {
+        state = state.copy(isAdditionSuccessful = false)
     }
-
-    fun tryCancelAlert(typed: String) { state = state.copy(typedCancelCode = typed) }
 }
