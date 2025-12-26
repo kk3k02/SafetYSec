@@ -70,7 +70,7 @@ fun ProtectedHistoryScreen(vm: AppViewModel) {
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier.fillMaxSize()
             ) {
-                item { Spacer(Modifier.height(8.dp)) } // Small margin at the very top of list
+                item { Spacer(Modifier.height(8.dp)) }
                 items(st.myAlerts) { alert ->
                     AlertHistoryItem(alert, sdf)
                 }
@@ -155,7 +155,6 @@ fun ProtectedWindowsScreen(vm: AppViewModel) {
             }
         }
     ) { padding ->
-        // Changed padding to remove top gap
         Column(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp)) {
             if (st.timeWindows.isEmpty()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -251,6 +250,7 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
     val st = vm.state
     var showOtpDialog by remember { mutableStateOf(false) }
     var showRemovalSuccessDialog by remember { mutableStateOf(false) }
+    var showUpdateSuccessDialog by remember { mutableStateOf(false) } // New local state
     var pendingRequestMonitor by remember { mutableStateOf<Pair<User, List<RuleType>>?>(null) }
 
     LaunchedEffect(st.isRemovalSuccessful) { if (st.isRemovalSuccessful) showRemovalSuccessDialog = true }
@@ -299,17 +299,37 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
                         RuleType.values().forEach { type ->
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                 Text(text = type.displayName(), style = MaterialTheme.typography.bodyMedium)
-                                Switch(checked = authorized.contains(type), onCheckedChange = { on -> if (on) authorized.add(type) else authorized.remove(type) })
+                                Switch(
+                                    checked = authorized.contains(type), 
+                                    onCheckedChange = { on -> 
+                                        if (on) authorized.add(type) else authorized.remove(type) 
+                                    }
+                                )
                             }
                         }
                         Spacer(Modifier.height(8.dp))
-                        Button(onClick = { vm.saveAuthorizations(monitor.uid, authorized.toList()) }, modifier = Modifier.fillMaxWidth()) { Text("Save Permissions") }
+                        Button(
+                            onClick = { 
+                                vm.saveAuthorizations(monitor.uid, authorized.toList())
+                                showUpdateSuccessDialog = true // Trigger local success dialog
+                            }, 
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("Save Permissions") }
                     }
                 }
             }
         }
         item { st.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp)) } }
         item { Spacer(Modifier.height(16.dp)) }
+    }
+
+    if (showUpdateSuccessDialog) {
+        AlertDialog(
+            onDismissRequest = { showUpdateSuccessDialog = false },
+            title = { Text("Permissions Updated") },
+            text = { Text("Your monitoring permissions have been successfully updated.") },
+            confirmButton = { TextButton(onClick = { showUpdateSuccessDialog = false }) { Text("OK") } }
+        )
     }
 
     if (showOtpDialog && st.myOtp != null) {
@@ -350,7 +370,6 @@ fun ProtectedProfileScreen(
 ) {
     val st = vm.state
     val authSt = authVm.uiState
-    val context = LocalContext.current
     var pin by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) { authVm.loadAccountInfo() }
@@ -366,15 +385,14 @@ fun ProtectedProfileScreen(
         Spacer(Modifier.height(24.dp))
         Text("Security Settings", style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(8.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Column {
-                Text("Fall Detection Service", style = MaterialTheme.typography.bodyLarge)
-                Text("Monitor falls using accelerometer", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
-            }
-            Switch(checked = st.isFallDetectionEnabled, onCheckedChange = { vm.toggleFallDetection(context) })
-        }
-        Spacer(Modifier.height(16.dp))
-        OutlinedTextField(value = pin, onValueChange = { pin = it }, label = { Text("Alert cancel PIN") }, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+        OutlinedTextField(
+            value = pin, 
+            onValueChange = { pin = it },
+            label = { Text("Alert cancel PIN") }, 
+            visualTransformation = PasswordVisualTransformation(), 
+            modifier = Modifier.fillMaxWidth(), 
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+        )
         Spacer(Modifier.height(12.dp))
         Button(onClick = { vm.updateCancelPin(pin) }, modifier = Modifier.fillMaxWidth()) { Text("Update PIN") }
         Spacer(Modifier.height(24.dp))
