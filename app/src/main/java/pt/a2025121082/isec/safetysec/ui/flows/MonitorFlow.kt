@@ -1,17 +1,16 @@
 package pt.a2025121082.isec.safetysec.ui.flows
 
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
+import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -23,36 +22,43 @@ import pt.a2025121082.isec.safetysec.ui.monitor.MonitorProfileScreen
 import pt.a2025121082.isec.safetysec.ui.monitor.MonitorRulesScreen
 import pt.a2025121082.isec.safetysec.viewmodel.AppViewModel
 
-/**
- * Navigation flow for the Monitor role.
- *
- * Provides a bottom navigation bar with four tabs:
- * - Dashboard
- * - Link (association with Protected users)
- * - Rules (configure / request monitoring rules)
- * - Profile (role switching, account actions, etc.)
- *
- * This flow uses a dedicated NavController scoped to the Monitor section.
- */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MonitorFlow(
     appViewModel: AppViewModel,
-    onSwitchToProtected: () -> Unit
+    onSwitchToProtected: () -> Unit,
+    onLogout: () -> Unit,
+    onProfile: () -> Unit
 ) {
-    /** Local NavController used only inside the Monitor flow. */
     val nav = rememberNavController()
+    val entry by nav.currentBackStackEntryAsState()
+    val currentRoute = entry?.destination?.route
 
     Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {
+                    val title = when (currentRoute) {
+                        MRoutes.Dash -> "Monitor Dashboard"
+                        MRoutes.Link -> "Link Accounts"
+                        MRoutes.Rules -> "Monitoring Rules"
+                        else -> "SafetYSec"
+                    }
+                    Text(title)
+                },
+                actions = {
+                    IconButton(onClick = onProfile) {
+                        Icon(Icons.Default.Person, contentDescription = "Profile")
+                    }
+                    IconButton(onClick = onLogout) {
+                        Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = "Logout")
+                    }
+                }
+            )
+        },
         bottomBar = {
             NavigationBar {
-                // Observe navigation destination to highlight the selected tab.
-                val entry by nav.currentBackStackEntryAsState()
                 val dest = entry?.destination
-
-                /**
-                 * Navigates to the selected route while preserving/restoring state
-                 * between bottom navigation tabs.
-                 */
                 fun go(route: String) {
                     nav.navigate(route) {
                         popUpTo(nav.graph.findStartDestination().id) { saveState = true }
@@ -90,9 +96,12 @@ fun MonitorFlow(
                 )
             }
         }
-    ) { _ ->
-        // Host navigation destinations for the Monitor flow.
-        NavHost(navController = nav, startDestination = MRoutes.Dash) {
+    ) { innerPadding ->
+        NavHost(
+            navController = nav, 
+            startDestination = MRoutes.Dash,
+            modifier = Modifier.padding(innerPadding)
+        ) {
             composable(MRoutes.Dash) { MonitorDashboardScreen(appViewModel) }
             composable(MRoutes.Link) { MonitorLinkScreen(appViewModel) }
             composable(MRoutes.Rules) { MonitorRulesScreen(appViewModel) }
@@ -101,9 +110,6 @@ fun MonitorFlow(
     }
 }
 
-/**
- * Route constants for Monitor flow destinations.
- */
 private object MRoutes {
     const val Dash = "m_dash"
     const val Link = "m_link"

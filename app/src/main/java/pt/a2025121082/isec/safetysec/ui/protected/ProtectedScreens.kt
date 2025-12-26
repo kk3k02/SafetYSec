@@ -6,21 +6,20 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -48,22 +47,34 @@ fun ProtectedHistoryScreen(vm: AppViewModel) {
     val st = vm.state
     val sdf = remember { SimpleDateFormat("HH:mm:ss dd/MM", Locale.getDefault()) }
 
-    Column(Modifier.padding(16.dp)) {
-        Text("Alert History", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(16.dp))
-
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 16.dp)
+    ) {
         if (st.myAlerts.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("No recent alerts.", style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        imageVector = Icons.Default.History, 
+                        contentDescription = null, 
+                        modifier = Modifier.size(64.dp), 
+                        tint = Color.LightGray
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text("No recent alerts.", style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
+                }
             }
         } else {
             LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier.fillMaxSize()
             ) {
+                item { Spacer(Modifier.height(8.dp)) } // Small margin at the very top of list
                 items(st.myAlerts) { alert ->
                     AlertHistoryItem(alert, sdf)
                 }
+                item { Spacer(Modifier.height(16.dp)) }
             }
         }
     }
@@ -72,52 +83,61 @@ fun ProtectedHistoryScreen(vm: AppViewModel) {
 @Composable
 fun AlertHistoryItem(alert: Alert, sdf: SimpleDateFormat) {
     val isCancelled = alert.status == "CANCELLED"
-    
     Card(
         modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(
-            containerColor = if (isCancelled) Color(0xFFF5F5F5) else Color(0xFFFFF1F1)
-        )
+            containerColor = if (isCancelled) Color(0xFFF8F9FA) else Color(0xFFFFF5F5)
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
-        Column(Modifier.padding(12.dp)) {
+        Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Default.Warning, 
-                    contentDescription = null, 
-                    tint = if (isCancelled) Color.Gray else Color.Red
-                )
-                Spacer(Modifier.width(8.dp))
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(if (isCancelled) Color.LightGray.copy(alpha = 0.2f) else Color.Red.copy(alpha = 0.1f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Warning, 
+                        contentDescription = null, 
+                        tint = if (isCancelled) Color.Gray else Color.Red,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text(
                         text = "${alert.type.displayName()} ALERT",
-                        style = MaterialTheme.typography.labelLarge,
+                        style = MaterialTheme.typography.titleMedium,
                         color = if (isCancelled) Color.DarkGray else Color.Red,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = if (isCancelled) "Status: CANCELLED" else "Status: SENT TO MONITOR",
-                        style = MaterialTheme.typography.labelSmall,
+                        text = if (isCancelled) "Cancelled by User" else "Sent to Monitor",
+                        style = MaterialTheme.typography.bodySmall,
                         color = if (isCancelled) Color.Gray else Color(0xFFD32F2F)
                     )
                 }
                 Text(sdf.format(Date(alert.timestamp)), style = MaterialTheme.typography.bodySmall)
             }
-            
-            Spacer(Modifier.height(4.dp))
             if (alert.location != null) {
-                Text(
-                    "Location: ${String.format("%.5f", alert.location.latitude)}, ${String.format("%.5f", alert.location.longitude)}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color.DarkGray
-                )
+                Spacer(Modifier.height(12.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(imageVector = Icons.Default.Place, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color.Gray)
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        "GPS: ${String.format("%.5f", alert.location.latitude)}, ${String.format("%.5f", alert.location.longitude)}",
+                        style = MaterialTheme.typography.bodySmall, color = Color.Gray
+                    )
+                }
             }
         }
     }
 }
 
-/**
- * Screen for managing time windows when monitoring rules are allowed to be active.
- */
 @Composable
 fun ProtectedWindowsScreen(vm: AppViewModel) {
     val st = vm.state
@@ -125,13 +145,8 @@ fun ProtectedWindowsScreen(vm: AppViewModel) {
     var showRemovalSuccessDialog by remember { mutableStateOf(false) }
     var showAdditionSuccessDialog by remember { mutableStateOf(false) }
 
-    LaunchedEffect(st.isRemovalSuccessful) {
-        if (st.isRemovalSuccessful) showRemovalSuccessDialog = true
-    }
-
-    LaunchedEffect(st.isAdditionSuccessful) {
-        if (st.isAdditionSuccessful) showAdditionSuccessDialog = true
-    }
+    LaunchedEffect(st.isRemovalSuccessful) { if (st.isRemovalSuccessful) showRemovalSuccessDialog = true }
+    LaunchedEffect(st.isAdditionSuccessful) { if (st.isAdditionSuccessful) showAdditionSuccessDialog = true }
 
     Scaffold(
         floatingActionButton = {
@@ -140,66 +155,42 @@ fun ProtectedWindowsScreen(vm: AppViewModel) {
             }
         }
     ) { padding ->
-        Column(Modifier.padding(padding).padding(16.dp)) {
-            Text("Active Monitoring Windows", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            Text("Define when your monitors are allowed to track you.", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
-            Spacer(Modifier.height(16.dp))
-
+        // Changed padding to remove top gap
+        Column(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp)) {
             if (st.timeWindows.isEmpty()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text("No time windows defined.", color = Color.Gray)
                 }
             } else {
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    item { Spacer(Modifier.height(8.dp)) }
                     items(st.timeWindows) { window ->
                         TimeWindowCard(window, onRemove = { vm.removeTimeWindow(window.id) })
                     }
+                    item { Spacer(Modifier.height(16.dp)) }
                 }
             }
         }
     }
 
     if (showAddDialog) {
-        AddTimeWindowDialog(
-            onDismiss = { showAddDialog = false },
-            onSave = { days, start, end ->
-                vm.addTimeWindow(days, start, end)
-                showAddDialog = false
-            }
-        )
+        AddTimeWindowDialog(onDismiss = { showAddDialog = false }, onSave = { days, start, end ->
+            vm.addTimeWindow(days, start, end)
+            showAddDialog = false
+        })
     }
-
     if (showAdditionSuccessDialog) {
-        AlertDialog(
-            onDismissRequest = { 
-                showAdditionSuccessDialog = false
-                vm.consumeAdditionSuccess()
-            },
+        AlertDialog(onDismissRequest = { showAdditionSuccessDialog = false; vm.consumeAdditionSuccess() },
             title = { Text("Window Added") },
             text = { Text("The protection time window has been successfully saved.") },
-            confirmButton = {
-                TextButton(onClick = { 
-                    showAdditionSuccessDialog = false
-                    vm.consumeAdditionSuccess()
-                }) { Text("OK") }
-            }
+            confirmButton = { TextButton(onClick = { showAdditionSuccessDialog = false; vm.consumeAdditionSuccess() }) { Text("OK") } }
         )
     }
-
     if (showRemovalSuccessDialog) {
-        AlertDialog(
-            onDismissRequest = { 
-                showRemovalSuccessDialog = false
-                vm.consumeRemovalSuccess()
-            },
+        AlertDialog(onDismissRequest = { showRemovalSuccessDialog = false; vm.consumeRemovalSuccess() },
             title = { Text("Window Removed") },
             text = { Text("The protection time window has been successfully deleted.") },
-            confirmButton = {
-                TextButton(onClick = { 
-                    showRemovalSuccessDialog = false
-                    vm.consumeRemovalSuccess()
-                }) { Text("OK") }
-            }
+            confirmButton = { TextButton(onClick = { showRemovalSuccessDialog = false; vm.consumeRemovalSuccess() }) { Text("OK") } }
         )
     }
 }
@@ -210,11 +201,7 @@ fun TimeWindowCard(window: TimeWindow, onRemove: () -> Unit) {
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(window.daysToString(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Text(
-                    "Active from ${window.startHour}:00 to ${window.endHour}:00",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.primary
-                )
+                Text("Active from ${window.startHour}:00 to ${window.endHour}:00", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
             }
             IconButton(onClick = onRemove) {
                 Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
@@ -228,7 +215,6 @@ fun TimeWindowCard(window: TimeWindow, onRemove: () -> Unit) {
 fun AddTimeWindowDialog(onDismiss: () -> Unit, onSave: (List<Int>, Int, Int) -> Unit) {
     var selectedDays by remember { mutableStateOf(setOf<Int>()) }
     var timeRange by remember { mutableStateOf(8f..17f) }
-    
     val dayNames = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 
     AlertDialog(
@@ -238,72 +224,36 @@ fun AddTimeWindowDialog(onDismiss: () -> Unit, onSave: (List<Int>, Int, Int) -> 
             Column(Modifier.fillMaxWidth()) {
                 Text("Select Days:", style = MaterialTheme.typography.labelLarge)
                 Spacer(Modifier.height(8.dp))
-                
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         (1..4).forEach { day ->
-                            FilterChip(
-                                selected = selectedDays.contains(day),
-                                onClick = { 
-                                    selectedDays = if (selectedDays.contains(day)) selectedDays - day else selectedDays + day
-                                },
-                                label = { Text(dayNames[day-1]) }
-                            )
+                            FilterChip(selected = selectedDays.contains(day), onClick = { selectedDays = if (selectedDays.contains(day)) selectedDays - day else selectedDays + day }, label = { Text(dayNames[day-1]) })
                         }
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         (5..7).forEach { day ->
-                            FilterChip(
-                                selected = selectedDays.contains(day),
-                                onClick = { 
-                                    selectedDays = if (selectedDays.contains(day)) selectedDays - day else selectedDays + day
-                                },
-                                label = { Text(dayNames[day-1]) }
-                            )
+                            FilterChip(selected = selectedDays.contains(day), onClick = { selectedDays = if (selectedDays.contains(day)) selectedDays - day else selectedDays + day }, label = { Text(dayNames[day-1]) })
                         }
                     }
                 }
-
                 Spacer(Modifier.height(24.dp))
-                Text(
-                    "Active Hours: ${timeRange.start.toInt()}:00 - ${timeRange.endInclusive.toInt()}:00",
-                    style = MaterialTheme.typography.labelLarge
-                )
-                RangeSlider(
-                    value = timeRange,
-                    onValueChange = { timeRange = it },
-                    valueRange = 0f..23f,
-                    steps = 22
-                )
+                Text("Active Hours: ${timeRange.start.toInt()}:00 - ${timeRange.endInclusive.toInt()}:00", style = MaterialTheme.typography.labelLarge)
+                RangeSlider(value = timeRange, onValueChange = { timeRange = it }, valueRange = 0f..23f, steps = 22)
             }
         },
-        confirmButton = {
-            Button(
-                onClick = { onSave(selectedDays.toList(), timeRange.start.toInt(), timeRange.endInclusive.toInt()) },
-                enabled = selectedDays.isNotEmpty() && timeRange.start < timeRange.endInclusive
-            ) { Text("Save Window") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        }
+        confirmButton = { Button(onClick = { onSave(selectedDays.toList(), timeRange.start.toInt(), timeRange.endInclusive.toInt()) }, enabled = selectedDays.isNotEmpty() && timeRange.start < timeRange.endInclusive) { Text("Save Window") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
 }
 
-/**
- * Screen for managing linked Monitors and authorizing monitoring permissions.
- */
 @Composable
 fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
     val st = vm.state
     var showOtpDialog by remember { mutableStateOf(false) }
     var showRemovalSuccessDialog by remember { mutableStateOf(false) }
-
     var pendingRequestMonitor by remember { mutableStateOf<Pair<User, List<RuleType>>?>(null) }
 
-    LaunchedEffect(st.isRemovalSuccessful) {
-        if (st.isRemovalSuccessful) showRemovalSuccessDialog = true
-    }
-
+    LaunchedEffect(st.isRemovalSuccessful) { if (st.isRemovalSuccessful) showRemovalSuccessDialog = true }
     LaunchedEffect(st.monitorRuleBundles, st.myLinkedMonitors) {
         st.myLinkedMonitors.forEach { monitor ->
             val bundle = st.monitorRuleBundles.find { it.monitorId == monitor.uid }
@@ -314,37 +264,23 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
             }
         }
     }
-
-    LaunchedEffect(st.myOtp) {
-        if (st.myOtp != null) showOtpDialog = true
-    }
+    LaunchedEffect(st.myOtp) { if (st.myOtp != null) showOtpDialog = true }
 
     LazyColumn(
-        modifier = Modifier.fillMaxSize().padding(16.dp),
+        modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        item { Spacer(Modifier.height(8.dp)) }
         item {
-            Text("Monitors & Permissions", style = MaterialTheme.typography.titleLarge)
-            Spacer(Modifier.height(8.dp))
-            Button(
-                onClick = { vm.generateOtp() },
-                modifier = Modifier.fillMaxWidth(),
-                enabled = !st.isLoading
-            ) { Text("Generate OTP (share with Monitor)") }
+            Button(onClick = { vm.generateOtp() }, modifier = Modifier.fillMaxWidth(), enabled = !st.isLoading) { Text("Generate OTP (share with Monitor)") }
         }
-
-        item {
-            Text("Your Monitors", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-        }
+        item { Text("Your Monitors", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
         if (st.myLinkedMonitors.isEmpty()) {
             item { Text("No monitors linked.", style = MaterialTheme.typography.bodyMedium, color = Color.Gray) }
         } else {
             items(st.myLinkedMonitors) { monitor ->
                 val bundle = st.monitorRuleBundles.find { it.monitorId == monitor.uid }
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-                ) {
+                Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
                     val authorized = remember(monitor.uid, bundle?.authorizedTypes) {
                         mutableStateListOf<RuleType>().apply { addAll(bundle?.authorizedTypes ?: emptyList()) }
                     }
@@ -356,75 +292,50 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
                                 Text(monitor.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                                 Text(monitor.email, style = MaterialTheme.typography.bodySmall)
                             }
-                            IconButton(onClick = { vm.removeMonitor(monitor.uid) }) {
-                                Icon(Icons.Default.Delete, contentDescription = "Remove", tint = MaterialTheme.colorScheme.error)
-                            }
+                            IconButton(onClick = { vm.removeMonitor(monitor.uid) }) { Icon(Icons.Default.Delete, contentDescription = "Remove", tint = MaterialTheme.colorScheme.error) }
                         }
                         Divider(Modifier.padding(vertical = 12.dp))
                         Text("Grant Permissions:", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
-                        
                         RuleType.values().forEach { type ->
-                            Row(
-                                Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                 Text(text = type.displayName(), style = MaterialTheme.typography.bodyMedium)
-                                Switch(
-                                    checked = authorized.contains(type),
-                                    onCheckedChange = { on -> if (on) authorized.add(type) else authorized.remove(type) }
-                                )
+                                Switch(checked = authorized.contains(type), onCheckedChange = { on -> if (on) authorized.add(type) else authorized.remove(type) })
                             }
                         }
                         Spacer(Modifier.height(8.dp))
-                        Button(
-                            onClick = { vm.saveAuthorizations(monitor.uid, authorized.toList()) },
-                            modifier = Modifier.fillMaxWidth()
-                        ) { Text("Save Permissions") }
+                        Button(onClick = { vm.saveAuthorizations(monitor.uid, authorized.toList()) }, modifier = Modifier.fillMaxWidth()) { Text("Save Permissions") }
                     }
                 }
             }
         }
-        item {
-            st.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp)) }
-        }
+        item { st.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp)) } }
+        item { Spacer(Modifier.height(16.dp)) }
     }
 
     if (showOtpDialog && st.myOtp != null) {
-        AlertDialog(
-            onDismissRequest = { showOtpDialog = false },
-            title = { Text("Association Code") },
-            text = {
-                Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("Share this 6-digit code with your Monitor.")
-                    Spacer(Modifier.height(16.dp))
-                    Text(text = st.myOtp!!, style = MaterialTheme.typography.displayMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                    Spacer(Modifier.height(8.dp))
-                    Text("Code expires in 10 minutes.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
-                }
-            },
-            confirmButton = { TextButton(onClick = { showOtpDialog = false }) { Text("Close") } }
-        )
+        AlertDialog(onDismissRequest = { showOtpDialog = false }, title = { Text("Association Code") }, text = {
+            Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("Share this 6-digit code with your Monitor.")
+                Spacer(Modifier.height(16.dp))
+                Text(text = st.myOtp!!, style = MaterialTheme.typography.displayMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.height(8.dp))
+                Text("Code expires in 10 minutes.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
+            }
+        }, confirmButton = { TextButton(onClick = { showOtpDialog = false }) { Text("Close") } })
     }
-
+    if (showRemovalSuccessDialog) {
+        AlertDialog(onDismissRequest = { showRemovalSuccessDialog = false; vm.consumeRemovalSuccess() }, title = { Text("Monitor Removed") }, text = { Text("The monitor has been successfully unlinked from your account.") }, confirmButton = { TextButton(onClick = { showRemovalSuccessDialog = false; vm.consumeRemovalSuccess() }) { Text("OK") } })
+    }
     pendingRequestMonitor?.let { (monitor, requestedTypes) ->
-        AlertDialog(
-            onDismissRequest = { pendingRequestMonitor = null },
-            title = { Text("New Access Request") },
-            text = {
-                Column {
-                    Text("${monitor.name} is requesting access to the following rules:")
-                    Spacer(Modifier.height(8.dp))
-                    requestedTypes.forEach { type -> Text("• ${type.displayName()}", fontWeight = FontWeight.SemiBold) }
-                    Spacer(Modifier.height(12.dp))
-                    Text("Do you want to grant these permissions?", style = MaterialTheme.typography.bodySmall)
-                }
-            },
-            confirmButton = {
-                Button(onClick = { vm.saveAuthorizations(monitor.uid, requestedTypes); pendingRequestMonitor = null }) { Text("Accept All") }
-            },
-            dismissButton = { TextButton(onClick = { pendingRequestMonitor = null }) { Text("Decide Later") } }
-        )
+        AlertDialog(onDismissRequest = { pendingRequestMonitor = null }, title = { Text("New Access Request") }, text = {
+            Column {
+                Text("${monitor.name} is requesting access to the following rules:")
+                Spacer(Modifier.height(8.dp))
+                requestedTypes.forEach { type -> Text("• ${type.displayName()}", fontWeight = FontWeight.SemiBold) }
+                Spacer(Modifier.height(12.dp))
+                Text("Do you want to grant these permissions?", style = MaterialTheme.typography.bodySmall)
+            }
+        }, confirmButton = { Button(onClick = { vm.saveAuthorizations(monitor.uid, requestedTypes); pendingRequestMonitor = null }) { Text("Accept All") } }, dismissButton = { TextButton(onClick = { pendingRequestMonitor = null }) { Text("Decide Later") } })
     }
 }
 
@@ -444,9 +355,8 @@ fun ProtectedProfileScreen(
 
     LaunchedEffect(Unit) { authVm.loadAccountInfo() }
 
-    Column(Modifier.padding(16.dp)) {
-        Text("Account Settings", style = MaterialTheme.typography.titleLarge)
-        Spacer(Modifier.height(16.dp))
+    Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
+        Spacer(Modifier.height(8.dp))
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp)) {
                 Text("Name: ${authSt.accountName ?: "-"}", style = MaterialTheme.typography.bodyLarge)
@@ -464,19 +374,11 @@ fun ProtectedProfileScreen(
             Switch(checked = st.isFallDetectionEnabled, onCheckedChange = { vm.toggleFallDetection(context) })
         }
         Spacer(Modifier.height(16.dp))
-        OutlinedTextField(
-            value = pin,
-            onValueChange = { pin = it },
-            label = { Text("Alert cancel PIN") },
-            visualTransformation = PasswordVisualTransformation(),
-            modifier = Modifier.fillMaxWidth(),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-        )
+        OutlinedTextField(value = pin, onValueChange = { pin = it }, label = { Text("Alert cancel PIN") }, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
         Spacer(Modifier.height(12.dp))
         Button(onClick = { vm.updateCancelPin(pin) }, modifier = Modifier.fillMaxWidth()) { Text("Update PIN") }
         Spacer(Modifier.height(24.dp))
         Button(onClick = onSwitchToMonitor, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)) { Text("Switch to Monitor Mode") }
-        
         authSt.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp)) }
         authSt.message?.let { Text(it, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 8.dp)) }
         st.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp)) }
@@ -488,7 +390,6 @@ fun ProtectedCancelAlertDialog(vm: AppViewModel) {
     val st = vm.state
     val context = LocalContext.current
 
-    // VIBRATION LOGIC
     LaunchedEffect(st.isCancelWindowOpen) {
         if (st.isCancelWindowOpen) {
             val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -498,8 +399,6 @@ fun ProtectedCancelAlertDialog(vm: AppViewModel) {
                 @Suppress("DEPRECATION")
                 context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
             }
-
-            // Pattern: vibration for 500ms, pause for 500ms
             while (st.isCancelWindowOpen) {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     vibrator.vibrate(VibrationEffect.createOneShot(500, VibrationEffect.DEFAULT_AMPLITUDE))
@@ -515,41 +414,26 @@ fun ProtectedCancelAlertDialog(vm: AppViewModel) {
     if (st.isCancelWindowOpen) {
         var typed by remember { mutableStateOf("") }
         fun formatTime(s: Int) = "00:${s.toString().padStart(2, '0')}"
-
-        AlertDialog(
-            onDismissRequest = { },
-            title = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Warning, contentDescription = null, tint = Color.Red)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Alert Triggered!", color = Color.Red, fontWeight = FontWeight.Bold)
-                }
-            },
-            text = {
-                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-                    Text("An emergency alert is about to be sent.")
-                    Spacer(Modifier.height(16.dp))
-                    Text(text = formatTime(st.cancelSecondsLeft), style = MaterialTheme.typography.displayMedium, fontWeight = FontWeight.ExtraBold, color = if (st.cancelSecondsLeft <= 3) Color.Red else MaterialTheme.colorScheme.primary)
-                    Spacer(Modifier.height(16.dp))
-                    Text("Enter PIN to cancel:", style = MaterialTheme.typography.bodyMedium)
-                    Spacer(Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = typed,
-                        onValueChange = { typed = it },
-                        label = { Text("Enter PIN") },
-                        visualTransformation = PasswordVisualTransformation(),
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                    )
-                }
-            },
-            confirmButton = {
-                Button(onClick = { vm.tryCancelAlert(typed) }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) { Text("Cancel Alert") }
+        AlertDialog(onDismissRequest = { }, title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Warning, contentDescription = null, tint = Color.Red)
+                Spacer(Modifier.width(8.dp))
+                Text("Alert Triggered!", color = Color.Red, fontWeight = FontWeight.Bold)
             }
-        )
+        }, text = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                Text("An emergency alert is about to be sent.")
+                Spacer(Modifier.height(16.dp))
+                Text(text = formatTime(st.cancelSecondsLeft), style = MaterialTheme.typography.displayMedium, fontWeight = FontWeight.ExtraBold, color = if (st.cancelSecondsLeft <= 3) Color.Red else MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.height(16.dp))
+                Text("Enter PIN to cancel:", style = MaterialTheme.typography.bodyMedium)
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(value = typed, onValueChange = { typed = it }, label = { Text("Enter PIN") }, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth(), singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+            }
+        }, confirmButton = {
+            Button(onClick = { vm.tryCancelAlert(typed) }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) { Text("Cancel Alert") }
+        })
     }
-
     if (st.isAlertSent) {
         AlertSentDialog(onDismiss = { vm.consumeAlertSentSuccess() })
     }
@@ -558,41 +442,12 @@ fun ProtectedCancelAlertDialog(vm: AppViewModel) {
 @Composable
 fun AlertSentDialog(onDismiss: () -> Unit) {
     val infiniteTransition = rememberInfiniteTransition()
-    val alpha by infiniteTransition.animateFloat(
-        initialValue = 0.2f,
-        targetValue = 1.0f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(800, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse
-        )
-    )
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        icon = { Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF2E7D32), modifier = Modifier.size(48.dp)) },
-        title = { Text("Notification Sent", textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()) },
-        text = {
-            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-                Text(
-                    text = "THE ALERT HAS BEEN SENT TO YOUR MONITOR",
-                    color = Color.Red,
-                    fontWeight = FontWeight.Black,
-                    textAlign = TextAlign.Center,
-                    fontSize = 18.sp,
-                    modifier = Modifier.alpha(alpha).padding(vertical = 8.dp)
-                )
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    "Please wait for further information and stay calm.",
-                    textAlign = TextAlign.Center,
-                    style = MaterialTheme.typography.bodyMedium
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text("I understand", fontWeight = FontWeight.Bold)
-            }
+    val alpha by infiniteTransition.animateFloat(initialValue = 0.2f, targetValue = 1.0f, animationSpec = infiniteRepeatable(animation = tween(800, easing = LinearEasing), repeatMode = RepeatMode.Reverse))
+    AlertDialog(onDismissRequest = onDismiss, icon = { Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF2E7D32), modifier = Modifier.size(48.dp)) }, title = { Text("Notification Sent", textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()) }, text = {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+            Text(text = "THE ALERT HAS BEEN SENT TO YOUR MONITOR", color = Color.Red, fontWeight = FontWeight.Black, textAlign = TextAlign.Center, fontSize = 18.sp, modifier = Modifier.alpha(alpha).padding(vertical = 8.dp))
+            Spacer(Modifier.height(8.dp))
+            Text("Please wait for further information and stay calm.", textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyMedium)
         }
-    )
+    }, confirmButton = { TextButton(onClick = onDismiss) { Text("I understand", fontWeight = FontWeight.Bold) } })
 }

@@ -1,18 +1,15 @@
 package pt.a2025121082.isec.safetysec.ui.flows
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
+import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -28,19 +25,41 @@ import pt.a2025121082.isec.safetysec.ui.protected.ProtectedProfileScreen
 import pt.a2025121082.isec.safetysec.ui.protected.ProtectedWindowsScreen
 import pt.a2025121082.isec.safetysec.viewmodel.AppViewModel
 
-/**
- * Navigation flow for the Protected role.
- */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProtectedFlow(
     appViewModel: AppViewModel,
-    onSwitchToMonitor: () -> Unit
+    onSwitchToMonitor: () -> Unit,
+    onLogout: () -> Unit,
+    onProfile: () -> Unit
 ) {
     val nav = rememberNavController()
     val entry by nav.currentBackStackEntryAsState()
     val currentRoute = entry?.destination?.route
 
     Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {
+                    val title = when (currentRoute) {
+                        PRoutes.History -> "Alert History"
+                        PRoutes.Windows -> "Time Windows"
+                        PRoutes.Monitors -> "Monitors"
+                        PRoutes.Profile -> "Profile Settings"
+                        else -> "SafetYSec"
+                    }
+                    Text(title)
+                },
+                actions = {
+                    IconButton(onClick = onProfile) {
+                        Icon(Icons.Default.Person, contentDescription = "Profile")
+                    }
+                    IconButton(onClick = onLogout) {
+                        Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = "Logout")
+                    }
+                }
+            )
+        },
         bottomBar = {
             NavigationBar {
                 val dest = entry?.destination
@@ -81,7 +100,6 @@ fun ProtectedFlow(
                 )
             }
         },
-        // Show Panic button ONLY if NOT on Windows screen to avoid overlapping FABs
         floatingActionButton = {
             if (currentRoute != PRoutes.Windows) {
                 FloatingActionButton(onClick = { appViewModel.triggerPanic() }) {
@@ -90,15 +108,16 @@ fun ProtectedFlow(
             }
         }
     ) { innerPadding ->
-        NavHost(
-            navController = nav,
-            startDestination = PRoutes.History,
-            modifier = Modifier.padding(innerPadding)
-        ) {
-            composable(PRoutes.History) { ProtectedHistoryScreen(appViewModel) }
-            composable(PRoutes.Windows) { ProtectedWindowsScreen(appViewModel) }
-            composable(PRoutes.Monitors) { ProtectedMonitorsAndRulesScreen(appViewModel) }
-            composable(PRoutes.Profile) { ProtectedProfileScreen(appViewModel, onSwitchToMonitor) }
+        Box(modifier = Modifier.padding(innerPadding)) {
+            NavHost(
+                navController = nav,
+                startDestination = PRoutes.History
+            ) {
+                composable(PRoutes.History) { ProtectedHistoryScreen(appViewModel) }
+                composable(PRoutes.Windows) { ProtectedWindowsScreen(appViewModel) }
+                composable(PRoutes.Monitors) { ProtectedMonitorsAndRulesScreen(appViewModel) }
+                composable(PRoutes.Profile) { ProtectedProfileScreen(appViewModel, onSwitchToMonitor) }
+            }
         }
 
         ProtectedCancelAlertDialog(appViewModel)
