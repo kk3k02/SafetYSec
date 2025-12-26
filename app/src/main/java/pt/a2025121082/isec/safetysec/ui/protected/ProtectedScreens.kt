@@ -1,10 +1,13 @@
 package pt.a2025121082.isec.safetysec.ui.protected
 
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Warning
@@ -12,11 +15,15 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import pt.a2025121082.isec.safetysec.data.model.Alert
 import pt.a2025121082.isec.safetysec.data.model.RuleType
@@ -98,15 +105,11 @@ fun ProtectedWindowsScreen(vm: AppViewModel) {
     var showAdditionSuccessDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(st.isRemovalSuccessful) {
-        if (st.isRemovalSuccessful) {
-            showRemovalSuccessDialog = true
-        }
+        if (st.isRemovalSuccessful) showRemovalSuccessDialog = true
     }
 
     LaunchedEffect(st.isAdditionSuccessful) {
-        if (st.isAdditionSuccessful) {
-            showAdditionSuccessDialog = true
-        }
+        if (st.isAdditionSuccessful) showAdditionSuccessDialog = true
     }
 
     Scaffold(
@@ -157,9 +160,7 @@ fun ProtectedWindowsScreen(vm: AppViewModel) {
                 TextButton(onClick = { 
                     showAdditionSuccessDialog = false
                     vm.consumeAdditionSuccess()
-                }) {
-                    Text("OK")
-                }
+                }) { Text("OK") }
             }
         )
     }
@@ -176,9 +177,7 @@ fun ProtectedWindowsScreen(vm: AppViewModel) {
                 TextButton(onClick = { 
                     showRemovalSuccessDialog = false
                     vm.consumeRemovalSuccess()
-                }) {
-                    Text("OK")
-                }
+                }) { Text("OK") }
             }
         )
     }
@@ -261,9 +260,7 @@ fun AddTimeWindowDialog(onDismiss: () -> Unit, onSave: (List<Int>, Int, Int) -> 
             Button(
                 onClick = { onSave(selectedDays.toList(), timeRange.start.toInt(), timeRange.endInclusive.toInt()) },
                 enabled = selectedDays.isNotEmpty() && timeRange.start < timeRange.endInclusive
-            ) {
-                Text("Save Window")
-            }
+            ) { Text("Save Window") }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Cancel") }
@@ -283,9 +280,7 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
     var pendingRequestMonitor by remember { mutableStateOf<Pair<User, List<RuleType>>?>(null) }
 
     LaunchedEffect(st.isRemovalSuccessful) {
-        if (st.isRemovalSuccessful) {
-            showRemovalSuccessDialog = true
-        }
+        if (st.isRemovalSuccessful) showRemovalSuccessDialog = true
     }
 
     LaunchedEffect(st.monitorRuleBundles, st.myLinkedMonitors) {
@@ -294,49 +289,37 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
             if (bundle != null && bundle.requested.isNotEmpty()) {
                 val requestedTypes = bundle.requested.map { it.type }
                 val notYetAuthorized = requestedTypes.filter { !bundle.authorizedTypes.contains(it) }
-                if (notYetAuthorized.isNotEmpty()) {
-                    pendingRequestMonitor = monitor to requestedTypes
-                }
+                if (notYetAuthorized.isNotEmpty()) pendingRequestMonitor = monitor to requestedTypes
             }
         }
     }
 
     LaunchedEffect(st.myOtp) {
-        if (st.myOtp != null) {
-            showOtpDialog = true
-        }
+        if (st.myOtp != null) showOtpDialog = true
     }
 
     LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
+        modifier = Modifier.fillMaxSize().padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         item {
             Text("Monitors & Permissions", style = MaterialTheme.typography.titleLarge)
             Spacer(Modifier.height(8.dp))
-
             Button(
                 onClick = { vm.generateOtp() },
                 modifier = Modifier.fillMaxWidth(),
                 enabled = !st.isLoading
-            ) {
-                Text("Generate OTP (share with Monitor)")
-            }
+            ) { Text("Generate OTP (share with Monitor)") }
         }
 
         item {
             Text("Your Monitors", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         }
         if (st.myLinkedMonitors.isEmpty()) {
-            item {
-                Text("No monitors linked.", style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
-            }
+            item { Text("No monitors linked.", style = MaterialTheme.typography.bodyMedium, color = Color.Gray) }
         } else {
             items(st.myLinkedMonitors) { monitor ->
                 val bundle = st.monitorRuleBundles.find { it.monitorId == monitor.uid }
-                
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
@@ -350,19 +333,14 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
                                 Text(monitor.email, style = MaterialTheme.typography.bodySmall)
                             }
                             IconButton(onClick = { vm.removeMonitor(monitor.uid) }) {
-                                Icon(Icons.Default.Delete, contentDescription = "Remove Monitor", tint = MaterialTheme.colorScheme.error)
+                                Icon(Icons.Default.Delete, contentDescription = "Remove", tint = MaterialTheme.colorScheme.error)
                             }
                         }
-                        
                         Divider(Modifier.padding(vertical = 12.dp))
                         Text("Grant Permissions:", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
-
                         val authorized = remember(monitor.uid, bundle?.authorizedTypes) {
-                            mutableStateListOf<RuleType>().apply { 
-                                addAll(bundle?.authorizedTypes ?: emptyList()) 
-                            }
+                            mutableStateListOf<RuleType>().apply { addAll(bundle?.authorizedTypes ?: emptyList()) }
                         }
-
                         RuleType.values().forEach { type ->
                             Row(
                                 Modifier.fillMaxWidth(),
@@ -372,13 +350,10 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
                                 Text(text = type.displayName(), style = MaterialTheme.typography.bodyMedium)
                                 Switch(
                                     checked = authorized.contains(type),
-                                    onCheckedChange = { on ->
-                                        if (on) authorized.add(type) else authorized.remove(type)
-                                    }
+                                    onCheckedChange = { on -> if (on) authorized.add(type) else authorized.remove(type) }
                                 )
                             }
                         }
-
                         Spacer(Modifier.height(8.dp))
                         Button(
                             onClick = { vm.saveAuthorizations(monitor.uid, authorized.toList()) },
@@ -388,7 +363,6 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
                 }
             }
         }
-        
         item {
             st.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp)) }
         }
@@ -399,50 +373,15 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
             onDismissRequest = { showOtpDialog = false },
             title = { Text("Association Code") },
             text = {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
+                Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("Share this 6-digit code with your Monitor.")
                     Spacer(Modifier.height(16.dp))
-                    Text(
-                        text = st.myOtp,
-                        style = MaterialTheme.typography.displayMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
+                    Text(text = st.myOtp!!, style = MaterialTheme.typography.displayMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.height(8.dp))
-                    Text(
-                        "Code expires in 10 minutes.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.secondary
-                    )
+                    Text("Code expires in 10 minutes.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
                 }
             },
-            confirmButton = {
-                TextButton(onClick = { showOtpDialog = false }) {
-                    Text("Close")
-                }
-            }
-        )
-    }
-
-    if (showRemovalSuccessDialog) {
-        AlertDialog(
-            onDismissRequest = { 
-                showRemovalSuccessDialog = false
-                vm.consumeRemovalSuccess()
-            },
-            title = { Text("Monitor Removed") },
-            text = { Text("The monitor has been successfully unlinked from your account.") },
-            confirmButton = {
-                TextButton(onClick = { 
-                    showRemovalSuccessDialog = false
-                    vm.consumeRemovalSuccess()
-                }) {
-                    Text("OK")
-                }
-            }
+            confirmButton = { TextButton(onClick = { showOtpDialog = false }) { Text("Close") } }
         )
     }
 
@@ -454,28 +393,15 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
                 Column {
                     Text("${monitor.name} is requesting access to the following rules:")
                     Spacer(Modifier.height(8.dp))
-                    requestedTypes.forEach { type ->
-                        Text("• ${type.displayName()}", fontWeight = FontWeight.SemiBold)
-                    }
+                    requestedTypes.forEach { type -> Text("• ${type.displayName()}", fontWeight = FontWeight.SemiBold) }
                     Spacer(Modifier.height(12.dp))
                     Text("Do you want to grant these permissions?", style = MaterialTheme.typography.bodySmall)
                 }
             },
             confirmButton = {
-                Button(
-                    onClick = {
-                        vm.saveAuthorizations(monitor.uid, requestedTypes)
-                        pendingRequestMonitor = null
-                    }
-                ) {
-                    Text("Accept All")
-                }
+                Button(onClick = { vm.saveAuthorizations(monitor.uid, requestedTypes); pendingRequestMonitor = null }) { Text("Accept All") }
             },
-            dismissButton = {
-                TextButton(onClick = { pendingRequestMonitor = null }) {
-                    Text("Decide Later")
-                }
-            }
+            dismissButton = { TextButton(onClick = { pendingRequestMonitor = null }) { Text("Decide Later") } }
         )
     }
 }
@@ -492,70 +418,43 @@ fun ProtectedProfileScreen(
     val st = vm.state
     val authSt = authVm.uiState
     val context = LocalContext.current
-
     var pin by remember { mutableStateOf("") }
 
-    LaunchedEffect(Unit) {
-        authVm.loadAccountInfo()
-    }
+    LaunchedEffect(Unit) { authVm.loadAccountInfo() }
 
     Column(Modifier.padding(16.dp)) {
         Text("Account Settings", style = MaterialTheme.typography.titleLarge)
         Spacer(Modifier.height(16.dp))
-
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp)) {
                 Text("Name: ${authSt.accountName ?: "-"}", style = MaterialTheme.typography.bodyLarge)
                 Text("Email: ${authSt.accountEmail ?: "-"}", style = MaterialTheme.typography.bodyLarge)
             }
         }
-
         Spacer(Modifier.height(24.dp))
         Text("Security Settings", style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(8.dp))
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Column {
                 Text("Fall Detection Service", style = MaterialTheme.typography.bodyLarge)
                 Text("Monitor falls using accelerometer", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
             }
-            Switch(
-                checked = st.isFallDetectionEnabled,
-                onCheckedChange = { vm.toggleFallDetection(context) }
-            )
+            Switch(checked = st.isFallDetectionEnabled, onCheckedChange = { vm.toggleFallDetection(context) })
         }
-
         Spacer(Modifier.height(16.dp))
-
         OutlinedTextField(
             value = pin,
             onValueChange = { pin = it },
             label = { Text("Alert cancel PIN") },
             visualTransformation = PasswordVisualTransformation(),
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        Spacer(Modifier.height(12.dp))
-        Button(
-            onClick = { vm.updateCancelPin(pin) },
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Update PIN")
-        }
-
-        Spacer(Modifier.height(24.dp))
-        Button(
-            onClick = onSwitchToMonitor,
             modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
-        ) {
-            Text("Switch to Monitor Mode")
-        }
-
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+        )
+        Spacer(Modifier.height(12.dp))
+        Button(onClick = { vm.updateCancelPin(pin) }, modifier = Modifier.fillMaxWidth()) { Text("Update PIN") }
+        Spacer(Modifier.height(24.dp))
+        Button(onClick = onSwitchToMonitor, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)) { Text("Switch to Monitor Mode") }
+        
         authSt.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp)) }
         authSt.message?.let { Text(it, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 8.dp)) }
         st.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp)) }
@@ -565,59 +464,87 @@ fun ProtectedProfileScreen(
 @Composable
 fun ProtectedCancelAlertDialog(vm: AppViewModel) {
     val st = vm.state
-    if (!st.isCancelWindowOpen) return
+    if (st.isCancelWindowOpen) {
+        var typed by remember { mutableStateOf("") }
+        fun formatTime(s: Int) = "00:${s.toString().padStart(2, '0')}"
 
-    var typed by remember { mutableStateOf("") }
-
-    // Helper to format 10 -> "00:10"
-    fun formatTime(seconds: Int): String {
-        return "00:${seconds.toString().padStart(2, '0')}"
+        AlertDialog(
+            onDismissRequest = { },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Warning, contentDescription = null, tint = Color.Red)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Alert Triggered!", color = Color.Red, fontWeight = FontWeight.Bold)
+                }
+            },
+            text = {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                    Text("An emergency alert is about to be sent.")
+                    Spacer(Modifier.height(16.dp))
+                    Text(text = formatTime(st.cancelSecondsLeft), style = MaterialTheme.typography.displayMedium, fontWeight = FontWeight.ExtraBold, color = if (st.cancelSecondsLeft <= 3) Color.Red else MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.height(16.dp))
+                    Text("Enter PIN to cancel:", style = MaterialTheme.typography.bodyMedium)
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = typed,
+                        onValueChange = { typed = it },
+                        label = { Text("Enter PIN") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+                }
+            },
+            confirmButton = {
+                Button(onClick = { vm.tryCancelAlert(typed) }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) { Text("Cancel Alert") }
+            }
+        )
     }
 
+    if (st.isAlertSent) {
+        AlertSentDialog(onDismiss = { vm.consumeAlertSentSuccess() })
+    }
+}
+
+@Composable
+fun AlertSentDialog(onDismiss: () -> Unit) {
+    val infiniteTransition = rememberInfiniteTransition()
+    val alpha by infiniteTransition.animateFloat(
+        initialValue = 0.2f,
+        targetValue = 1.0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(800, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        )
+    )
+
     AlertDialog(
-        onDismissRequest = { },
-        title = { 
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Warning, contentDescription = null, tint = Color.Red)
-                Spacer(Modifier.width(8.dp))
-                Text("Alert Triggered!", color = Color.Red, fontWeight = FontWeight.Bold)
-            }
-        },
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF2E7D32), modifier = Modifier.size(48.dp)) },
+        title = { Text("Notification Sent", textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()) },
         text = {
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-                Text("An emergency alert is about to be sent.")
-                Spacer(Modifier.height(16.dp))
-                
-                // LIVE TIMER DISPLAY
                 Text(
-                    text = formatTime(st.cancelSecondsLeft),
-                    style = MaterialTheme.typography.displayMedium,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = if (st.cancelSecondsLeft <= 3) Color.Red else MaterialTheme.colorScheme.primary
+                    text = "THE ALERT HAS BEEN SENT TO YOUR MONITOR",
+                    color = Color.Red,
+                    fontWeight = FontWeight.Black,
+                    textAlign = TextAlign.Center,
+                    fontSize = 18.sp,
+                    modifier = Modifier.alpha(alpha).padding(vertical = 8.dp)
                 )
-                
-                Spacer(Modifier.height(16.dp))
-                Text("Enter PIN to cancel:", style = MaterialTheme.typography.bodyMedium)
                 Spacer(Modifier.height(8.dp))
-                
-                OutlinedTextField(
-                    value = typed,
-                    onValueChange = { typed = it },
-                    label = { Text("Enter PIN") },
-                    visualTransformation = PasswordVisualTransformation(),
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
+                Text(
+                    "Please wait for further information and stay calm.",
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.bodyMedium
                 )
             }
         },
         confirmButton = {
-            Button(
-                onClick = { vm.tryCancelAlert(typed) },
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-            ) { 
-                Text("Cancel Alert") 
+            TextButton(onClick = onDismiss) {
+                Text("I understand", fontWeight = FontWeight.Bold)
             }
-        },
-        dismissButton = null // No wait button, user must enter PIN or wait
+        }
     )
 }

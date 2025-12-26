@@ -41,6 +41,7 @@ data class AppUiState(
     val isRequestSuccessful: Boolean = false,
     val isRemovalSuccessful: Boolean = false,
     val isAdditionSuccessful: Boolean = false,
+    val isAlertSent: Boolean = false, // Added this field
     val isCancelWindowOpen: Boolean = false,
     val cancelSecondsLeft: Int = 0,
     val typedCancelCode: String? = null,
@@ -61,7 +62,6 @@ class AppViewModel @Inject constructor(
     private var alertsListenerJob: Job? = null
 
     init {
-        // Listen for sensor events from background services
         viewModelScope.launch {
             alertRepo.detectionEvents.collectLatest { type ->
                 triggerAlertWithTimer(type)
@@ -69,17 +69,17 @@ class AppViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Triggers an alert flow with a 10-second countdown on the UI.
-     */
     private fun triggerAlertWithTimer(type: RuleType) = viewModelScope.launch {
         val me = state.me ?: return@launch
         if (state.isCancelWindowOpen) return@launch
 
-        // UI: Initialize countdown state
-        state = state.copy(isCancelWindowOpen = true, cancelSecondsLeft = 10, typedCancelCode = null)
+        state = state.copy(
+            isCancelWindowOpen = true, 
+            cancelSecondsLeft = 10, 
+            typedCancelCode = null,
+            isAlertSent = false
+        )
         
-        // Background ticker job to update the UI clock every second
         val tickerJob = viewModelScope.launch {
             while (state.cancelSecondsLeft > 0) {
                 delay(1000)
@@ -87,7 +87,6 @@ class AppViewModel @Inject constructor(
             }
         }
 
-        // Wait for user input or timeout via Repository logic
         val sent = alertRepo.triggerAlert(
             ruleType = type,
             user = me,
@@ -96,15 +95,20 @@ class AppViewModel @Inject constructor(
             videoUriProvider = { null }
         )
         
-        // Cleanup after dialog closes
         tickerJob.cancel()
         state = state.copy(isCancelWindowOpen = false, cancelSecondsLeft = 0, typedCancelCode = null)
         
         if (!sent) {
             state = state.copy(error = "Alert cancelled by user.")
         } else {
-            loadMyProfile() // Refresh history to see new alert
+            // SHOW THE SUCCESS POPUP
+            state = state.copy(isAlertSent = true)
+            loadMyProfile()
         }
+    }
+
+    fun consumeAlertSentSuccess() {
+        state = state.copy(isAlertSent = false)
     }
 
     fun triggerPanic() {
@@ -318,9 +322,5 @@ class AppViewModel @Inject constructor(
         } catch (t: Throwable) {
             state = state.copy(isLoading = false, error = t.message)
         }
-    }
-
-    fun consumeAdditionSucess() {
-        state = state.copy(isAdditionSuccessful = false)
     }
 }
