@@ -82,12 +82,19 @@ class AppViewModel @Inject constructor(
     private var inactivityJob: Job? = null
     private var recordingTimerJob: Job? = null
     private var recording: Recording? = null
-    private var currentActiveAlertId: String? = null
+    private var isHardwareBusy = false
     
+    // Publiczne videoCapture by MainActivity mogło go użyć do bindToLifecycle (rozwiązuje błąd kompilacji)
     var videoCapture: VideoCapture<Recorder>? = null
         private set
 
     init {
+        // Inicjalizujemy videoCapture raz na początku
+        val recorder = Recorder.Builder()
+            .setQualitySelector(QualitySelector.from(Quality.LOWEST))
+            .build()
+        videoCapture = VideoCapture.withOutput(recorder)
+
         viewModelScope.launch {
             alertRepo.detectionEvents.collectLatest { type ->
                 triggerAlertWithTimer(type)
@@ -97,23 +104,26 @@ class AppViewModel @Inject constructor(
 
     @SuppressLint("MissingPermission")
     private fun startVideoRecording(alertId: String) {
-        currentActiveAlertId = alertId
-        state = state.copy(recordingSecondsLeft = 30, isRecordingPopupOpen = true)
+        Log.d("AppViewModel", "startVideoRecording: alertId=$alertId, busy=$isHardwareBusy, hasRec=${recording != null}")
+
+        if (isHardwareBusy || recording != null) {
+            if (recording != null && !isHardwareBusy) {
+                stopVideoRecording()
+            }
+            viewModelScope.launch {
+                delay(1000)
+                startVideoRecording(alertId)
+            }
+            return
+        }
+        
+        isHardwareBusy = true 
+        state = state.copy(recordingSecondsLeft = 30, isRecordingPopupOpen = true, isCancelWindowOpen = false)
         
         viewModelScope.launch {
             try {
-                val cameraProvider = ProcessCameraProvider.getInstance(context).await()
-                val recorder = Recorder.Builder()
-                    .setQualitySelector(QualitySelector.from(Quality.LOWEST))
-                    .build()
-                videoCapture = VideoCapture.withOutput(recorder)
-
-                cameraProvider.unbindAll()
-                cameraProvider.bindToLifecycle(
-                    ProcessLifecycleOwner.get(),
-                    CameraSelector.DEFAULT_FRONT_CAMERA,
-                    videoCapture!!
-                )
+                // Poczekaj chwilę by MainActivity zdążyło zbindować use-case (jeśli popup właśnie się otworzył)
+                delay(500)
 
                 val videoFile = File(context.filesDir, "alert_${alertId}.mp4")
                 val outputOptions = FileOutputOptions.Builder(videoFile).build()
@@ -138,32 +148,40 @@ class AppViewModel @Inject constructor(
                         state = state.copy(recordingSecondsLeft = state.recordingSecondsLeft - 1)
                     }
                     stopVideoRecording()
+                    state = state.copy(isRecordingPopupOpen = false)
                 }
             } catch (e: Exception) {
                 Log.e("AppViewModel", "Camera recording failed", e)
+                state = state.copy(isRecordingPopupOpen = false)
+                recording = null
+                isHardwareBusy = false
             }
         }
     }
 
     private fun handleRecordingFinalized(alertId: String, uri: Uri?) {
+        Log.d("AppViewModel", "Finalized alertId=$alertId, hasUri=${uri != null}")
+        
+        recording = null
+        isHardwareBusy = false
+
         viewModelScope.launch {
-            uri?.let {
-                alertRepo.updateAlertWithVideo(alertId, state.me!!, it)
-                refreshProtectedData(state.me!!.uid)
+            if (uri != null) {
+                try {
+                    alertRepo.updateAlertWithVideo(alertId, state.me!!, uri)
+                } catch (e: Exception) {
+                    Log.e("AppViewModel", "Video upload failed", e)
+                }
             }
-            try {
-                val cameraProvider = ProcessCameraProvider.getInstance(context).await()
-                cameraProvider.unbindAll()
-                videoCapture = null
-            } catch (e: Exception) {
-                Log.e("AppViewModel", "Unbind failed", e)
-            }
+            state.me?.let { refreshProtectedData(it.uid) }
         }
     }
 
     private fun stopVideoRecording() {
-        recording?.stop()
-        recording = null
+        if (recording != null) {
+            isHardwareBusy = true
+            recording?.stop()
+        }
         recordingTimerJob?.cancel()
     }
 

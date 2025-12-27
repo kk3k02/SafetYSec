@@ -40,58 +40,44 @@ class AlertRepository @Inject constructor(
             return null
         }
 
-        val location = locationProvider()
         val sentAlert = Alert(
             type = ruleType,
             protectedId = user.uid,
             protectedName = user.name,
-            location = location,
+            location = locationProvider(),
             status = "SENT"
         )
         saveAlertToProtected(user.uid, sentAlert)
 
-        if (user.monitors.isNotEmpty()) {
-            user.monitors.forEach { monitorId ->
-                firestore.collection("users").document(monitorId)
-                    .collection("alerts").document(sentAlert.id).set(sentAlert).await()
-            }
+        user.monitors.forEach { monitorId ->
+            firestore.collection("users").document(monitorId).collection("alerts").document(sentAlert.id).set(sentAlert).await()
         }
         return sentAlert.id
     }
 
     suspend fun updateAlertWithVideo(alertId: String, user: User, videoUri: Uri) {
         try {
-            // Safe delay to ensure file is closed by CameraX
+            // Give system 2s to close the file handle
             delay(2000)
-            
             val videoFile = File(videoUri.path ?: return)
-            if (!videoFile.exists() || videoFile.length() <= 0) {
-                Log.e("AlertRepo", "Video file not ready for upload")
-                return
-            }
+            if (!videoFile.exists() || videoFile.length() <= 0) return
 
-            Log.d("AlertRepo", "Reading video bytes for upload...")
+            // USE putBytes to avoid "Object does not exist" 404 errors with URIs
             val bytes = videoFile.readBytes()
-            
-            val fileName = "alert_${alertId}.mp4"
-            val storageRef = storage.reference.child("alerts_videos/$fileName")
+            val storageRef = storage.reference.child("alerts_videos/alert_${alertId}.mp4")
 
-            Log.d("AlertRepo", "Starting upload to Firebase Storage...")
+            Log.d("AlertRepo", "Uploading video bytes for alert: $alertId")
             storageRef.putBytes(bytes).await()
             val videoUrl = storageRef.downloadUrl.await().toString()
 
-            // Update database
             val updates = mapOf("videoUrl" to videoUrl)
-            firestore.collection("users").document(user.uid)
-                .collection("my_alerts").document(alertId).update(updates).await()
-
+            firestore.collection("users").document(user.uid).collection("my_alerts").document(alertId).update(updates).await()
             user.monitors.forEach { monitorId ->
-                firestore.collection("users").document(monitorId)
-                    .collection("alerts").document(alertId).update(updates).await()
+                firestore.collection("users").document(monitorId).collection("alerts").document(alertId).update(updates).await()
             }
-            Log.d("AlertRepo", "Video upload and DB link SUCCESS for alert: $alertId")
+            videoFile.delete()
         } catch (e: Exception) {
-            Log.e("AlertRepo", "CRITICAL ERROR: Video update failed", e)
+            Log.e("AlertRepo", "Upload FAILED: ${e.message}")
         }
     }
 
@@ -110,14 +96,9 @@ class AlertRepository @Inject constructor(
     }
 
     private suspend fun waitForCancel(code: String, provider: suspend () -> String?): Boolean {
-        val maxMs = 10_000L
-        val stepMs = 500L
-        var waited = 0L
-        while (waited < maxMs) {
-            val typed = provider()?.trim()
-            if (!typed.isNullOrBlank() && typed == code) return true
-            delay(stepMs)
-            waited += stepMs
+        repeat(40) {
+            if (provider()?.trim() == code) return true
+            delay(250)
         }
         return false
     }
