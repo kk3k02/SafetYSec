@@ -83,7 +83,10 @@ class AppViewModel @Inject constructor(
     private val protectedAlertsListeners = mutableMapOf<String, ListenerRegistration>()
     private val alertsMap = mutableMapOf<String, List<Alert>>()
 
-    // SINGLE INSTANCE VideoCapture - UI to zbindowuje raz
+    // Location provider injected from UI (MainActivity)
+    private var locationProvider: (suspend () -> GeoPoint?)? = null
+
+    // SINGLE INSTANCE VideoCapture
     val videoCapture: VideoCapture<Recorder> = VideoCapture.withOutput(
         Recorder.Builder()
             .setQualitySelector(QualitySelector.from(Quality.LOWEST))
@@ -100,9 +103,10 @@ class AppViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Called by MainActivity when it's sure that videoCapture is bound to lifecycle.
-     */
+    fun setLocationProvider(provider: suspend () -> GeoPoint?) {
+        this.locationProvider = provider
+    }
+
     @SuppressLint("MissingPermission")
     fun startActualRecording() {
         val alertId = currentAlertIdForRecording ?: return
@@ -125,7 +129,6 @@ class AppViewModel @Inject constructor(
                 }
             }
         
-        // Start countdown
         recordingTimerJob?.cancel()
         recordingTimerJob = viewModelScope.launch {
             while (state.recordingSecondsLeft > 0) {
@@ -162,7 +165,13 @@ class AppViewModel @Inject constructor(
         val tickerJob = viewModelScope.launch {
             while (state.cancelSecondsLeft > 0) { delay(1000); state = state.copy(cancelSecondsLeft = state.cancelSecondsLeft - 1) }
         }
-        val alertId = alertRepo.triggerAlert(type, me, { state.typedCancelCode }, { GeoPoint(0.0, 0.0) })
+        
+        val alertId = alertRepo.triggerAlert(
+            ruleType = type, 
+            user = me, 
+            cancelCodeProvider = { state.typedCancelCode }, 
+            locationProvider = { locationProvider?.invoke() }
+        )
         tickerJob.cancel()
         
         state = state.copy(isCancelWindowOpen = false, cancelSecondsLeft = 0)
@@ -321,7 +330,7 @@ class AppViewModel @Inject constructor(
 
     private fun triggerInactivityAlert() = viewModelScope.launch {
         val me = state.me ?: return@launch
-        if (alertRepo.triggerAlert(RuleType.INACTIVITY, me, { null }, { GeoPoint(0.0, 0.0) }) != null) {
+        if (alertRepo.triggerAlert(RuleType.INACTIVITY, me, { null }, { locationProvider?.invoke() }) != null) {
             state = state.copy(showInactivityAlertPopup = state.inactivityDurationMin)
         }
     }

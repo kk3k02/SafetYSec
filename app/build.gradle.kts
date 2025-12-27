@@ -74,6 +74,9 @@ dependencies {
     kapt("com.google.dagger:hilt-compiler:2.51.1")
     implementation("androidx.hilt:hilt-navigation-compose:1.2.0")
 
+    // Location
+    implementation("com.google.android.gms:play-services-location:21.3.0")
+
     // CameraX dependencies
     val camerax_version = "1.3.4"
     implementation("androidx.camera:camera-core:${camerax_version}")

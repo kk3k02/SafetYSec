@@ -1,6 +1,9 @@
 package pt.a2025121082.isec.safetysec
 
 import android.Manifest
+import android.annotation.SuppressLint
+import android.app.Activity
+import android.content.IntentSender
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.util.Log
@@ -9,6 +12,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.Preview
@@ -48,7 +52,11 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.google.android.gms.common.api.ResolvableApiException
+import com.google.android.gms.location.*
+import com.google.firebase.firestore.GeoPoint
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.tasks.await
 import pt.a2025121082.isec.safetysec.data.model.Alert
 import pt.a2025121082.isec.safetysec.ui.auth.LoginScreen
 import pt.a2025121082.isec.safetysec.ui.auth.RegistrationScreen
@@ -107,8 +115,14 @@ private fun SafetYSecApp(
     val authState = authViewModel.uiState
     val appState = appViewModel.state
     val context = LocalContext.current
+    val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
 
-    val permissionsToRequest = arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)
+    val permissionsToRequest = arrayOf(
+        Manifest.permission.CAMERA, 
+        Manifest.permission.RECORD_AUDIO,
+        Manifest.permission.ACCESS_FINE_LOCATION,
+        Manifest.permission.ACCESS_COARSE_LOCATION
+    )
     var permissionsGranted by remember { 
         mutableStateOf(permissionsToRequest.all { ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED }) 
     }
@@ -117,9 +131,61 @@ private fun SafetYSecApp(
         permissionsGranted = results.values.all { it }
     }
 
+    val gpsLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        if (result.resultCode != Activity.RESULT_OK) {
+            Log.w("MainActivity", "User declined to enable GPS")
+        }
+    }
+
+    fun checkGpsSettings() {
+        val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 5000).build()
+        val builder = LocationSettingsRequest.Builder()
+            .addLocationRequest(locationRequest)
+            .setAlwaysShow(true)
+        
+        val client = LocationServices.getSettingsClient(context)
+        client.checkLocationSettings(builder.build())
+            .addOnFailureListener { exception ->
+                if (exception is ResolvableApiException) {
+                    try {
+                        val intentSenderRequest = IntentSenderRequest.Builder(exception.resolution.intentSender).build()
+                        gpsLauncher.launch(intentSenderRequest)
+                    } catch (e: IntentSender.SendIntentException) {
+                        Log.e("MainActivity", "Error launching GPS resolution", e)
+                    }
+                }
+            }
+    }
+
     LaunchedEffect(Unit) {
         if (!permissionsGranted) launcher.launch(permissionsToRequest)
         authViewModel.refreshAuthState()
+    }
+
+    LaunchedEffect(permissionsGranted) {
+        if (permissionsGranted) {
+            checkGpsSettings()
+        }
+    }
+
+    // Function to get current location
+    @SuppressLint("MissingPermission")
+    suspend fun getCurrentLocation(): GeoPoint? {
+        return try {
+            if (!permissionsGranted) return null
+            val location = fusedLocationClient.lastLocation.await()
+            location?.let { GeoPoint(it.latitude, it.longitude) }
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Failed to get location", e)
+            null
+        }
+    }
+
+    // Pass location provider to ViewModel
+    LaunchedEffect(Unit) {
+        appViewModel.setLocationProvider { getCurrentLocation() }
     }
 
     LaunchedEffect(authState.isAuthenticated, appState.me?.uid) {
