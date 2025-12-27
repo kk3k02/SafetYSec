@@ -202,7 +202,18 @@ class AppViewModel @Inject constructor(
                 }
         }
 
+        // Get protected users for this monitor
         val pIds = state.me?.protectedUsers ?: emptyList()
+        
+        // Remove listeners for users that are no longer linked
+        val currentKeys = protectedAlertsListeners.keys.toSet()
+        val toRemove = currentKeys - pIds.toSet()
+        toRemove.forEach { pUid ->
+            protectedAlertsListeners[pUid]?.remove()
+            protectedAlertsListeners.remove(pUid)
+            alertsMap.remove(pUid)
+        }
+
         pIds.forEach { pUid ->
             if (!protectedAlertsListeners.containsKey(pUid)) {
                 protectedAlertsListeners[pUid] = db.collection("users").document(pUid).collection("my_alerts")
@@ -213,6 +224,10 @@ class AppViewModel @Inject constructor(
                     }
             }
         }
+        
+        // Update monitorAlerts in case pIds changed
+        state = state.copy(monitorAlerts = alertsMap.values.flatten().sortedByDescending { it.timestamp })
+
         viewModelScope.launch {
             try {
                 val me = authRepo.getUserProfile(monitorUid)
@@ -236,16 +251,34 @@ class AppViewModel @Inject constructor(
             profileListener = db.collection("users").document(uid).addSnapshotListener { snap, _ ->
                 val me = snap?.toObject(User::class.java)
                 if (me != null) {
+                    val wasMonitor = state.me?.roles?.contains("Monitor") == true
+                    val isMonitor = me.roles.contains("Monitor")
+                    
                     state = state.copy(me = me, isLoading = false)
+                    
                     if (me.roles.contains("Protected")) {
                         startMyAlertsListener(me.uid)
                         viewModelScope.launch { refreshProtectedMetadata(me.uid) }
                         startInactivityTimer()
                     }
-                    if (me.roles.contains("Monitor")) startMonitoringDashboard(me.uid, null)
+                    
+                    if (isMonitor) {
+                        startMonitoringDashboard(me.uid, null)
+                    } else if (wasMonitor) {
+                        stopMonitoringDashboard()
+                    }
                 }
             }
         } catch (t: Throwable) { state = state.copy(isLoading = false, error = t.message) }
+    }
+
+    private fun stopMonitoringDashboard() {
+        monitorPopupListener?.remove()
+        monitorPopupListener = null
+        protectedAlertsListeners.values.forEach { it.remove() }
+        protectedAlertsListeners.clear()
+        alertsMap.clear()
+        state = state.copy(monitorAlerts = emptyList(), linkedProtectedUsers = emptyList(), pendingAlerts = emptyList())
     }
 
     private fun startMyAlertsListener(uid: String) {
@@ -286,6 +319,8 @@ class AppViewModel @Inject constructor(
         myAlertsListener?.remove()
         monitorPopupListener?.remove()
         protectedAlertsListeners.values.forEach { it.remove() }
+        protectedAlertsListeners.clear()
+        alertsMap.clear()
         state = AppUiState()
     }
 
