@@ -12,6 +12,7 @@ import kotlinx.coroutines.tasks.await
 import pt.a2025121082.isec.safetysec.data.model.Alert
 import pt.a2025121082.isec.safetysec.data.model.RuleType
 import pt.a2025121082.isec.safetysec.data.model.User
+import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -31,34 +32,22 @@ class AlertRepository @Inject constructor(
         ruleType: RuleType,
         user: User,
         cancelCodeProvider: suspend () -> String?,
-        locationProvider: suspend () -> GeoPoint?,
-        videoUriProvider: suspend () -> Uri? // PROVIDER FOR RECORDED VIDEO
-    ): Boolean {
-        // 1) Wait for 10s cancel window
+        locationProvider: suspend () -> GeoPoint?
+    ): String? {
         val cancelled = waitForCancel(user.alertCancelCode, cancelCodeProvider)
-        
         if (cancelled) {
             saveAlertToProtected(user.uid, Alert(type = ruleType, protectedId = user.uid, protectedName = user.name, status = "CANCELLED"))
-            return false
+            return null
         }
 
-        // 2) Collect context
         val location = locationProvider()
-        val videoUri = videoUriProvider()
-        
-        // 3) Upload video to Storage if exists
-        val videoUrl = videoUri?.let { uploadVideo(user.uid, it) }
-
         val sentAlert = Alert(
             type = ruleType,
             protectedId = user.uid,
             protectedName = user.name,
             location = location,
-            videoUrl = videoUrl,
             status = "SENT"
         )
-        
-        // 4) Save locally and to monitors
         saveAlertToProtected(user.uid, sentAlert)
 
         if (user.monitors.isNotEmpty()) {
@@ -67,44 +56,66 @@ class AlertRepository @Inject constructor(
                     .collection("alerts").document(sentAlert.id).set(sentAlert).await()
             }
         }
-        return true
+        return sentAlert.id
     }
 
-    private suspend fun uploadVideo(uid: String, uri: Uri): String {
-        val fileName = "alert_${uid}_${System.currentTimeMillis()}.mp4"
-        val ref = storage.reference.child("alerts_videos/$fileName")
-        ref.putFile(uri).await()
-        return ref.downloadUrl.await().toString()
+    suspend fun updateAlertWithVideo(alertId: String, user: User, videoUri: Uri) {
+        try {
+            // Safe delay to ensure file is closed by CameraX
+            delay(2000)
+            
+            val videoFile = File(videoUri.path ?: return)
+            if (!videoFile.exists() || videoFile.length() <= 0) {
+                Log.e("AlertRepo", "Video file not ready for upload")
+                return
+            }
+
+            Log.d("AlertRepo", "Reading video bytes for upload...")
+            val bytes = videoFile.readBytes()
+            
+            val fileName = "alert_${alertId}.mp4"
+            val storageRef = storage.reference.child("alerts_videos/$fileName")
+
+            Log.d("AlertRepo", "Starting upload to Firebase Storage...")
+            storageRef.putBytes(bytes).await()
+            val videoUrl = storageRef.downloadUrl.await().toString()
+
+            // Update database
+            val updates = mapOf("videoUrl" to videoUrl)
+            firestore.collection("users").document(user.uid)
+                .collection("my_alerts").document(alertId).update(updates).await()
+
+            user.monitors.forEach { monitorId ->
+                firestore.collection("users").document(monitorId)
+                    .collection("alerts").document(alertId).update(updates).await()
+            }
+            Log.d("AlertRepo", "Video upload and DB link SUCCESS for alert: $alertId")
+        } catch (e: Exception) {
+            Log.e("AlertRepo", "CRITICAL ERROR: Video update failed", e)
+        }
     }
 
     private suspend fun saveAlertToProtected(uid: String, alert: Alert) {
-        firestore.collection("users").document(uid)
-            .collection("my_alerts").document(alert.id).set(alert).await()
+        firestore.collection("users").document(uid).collection("my_alerts").document(alert.id).set(alert).await()
     }
 
     suspend fun deleteAlertFromMonitor(monitorUid: String, alertId: String) {
-        firestore.collection("users").document(monitorUid)
-            .collection("alerts").document(alertId).delete().await()
+        firestore.collection("users").document(monitorUid).collection("alerts").document(alertId).delete().await()
     }
 
     suspend fun getProtectedAlertHistory(uid: String): List<Alert> {
-        val snapshot = firestore.collection("users").document(uid)
-            .collection("my_alerts")
-            .orderBy("timestamp", com.google.firebase.firestore.Query.Direction.DESCENDING)
-            .get().await()
-        return snapshot.toObjects(Alert::class.java)
+        val snap = firestore.collection("users").document(uid).collection("my_alerts")
+            .orderBy("timestamp", com.google.firebase.firestore.Query.Direction.DESCENDING).get().await()
+        return snap.toObjects(Alert::class.java)
     }
 
-    private suspend fun waitForCancel(
-        correctCode: String,
-        cancelCodeProvider: suspend () -> String?
-    ): Boolean {
+    private suspend fun waitForCancel(code: String, provider: suspend () -> String?): Boolean {
         val maxMs = 10_000L
-        val stepMs = 250L
+        val stepMs = 500L
         var waited = 0L
         while (waited < maxMs) {
-            val typed = cancelCodeProvider()?.trim()
-            if (!typed.isNullOrBlank() && typed == correctCode) return true
+            val typed = provider()?.trim()
+            if (!typed.isNullOrBlank() && typed == code) return true
             delay(stepMs)
             waited += stepMs
         }

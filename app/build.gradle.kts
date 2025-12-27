@@ -82,6 +82,12 @@ dependencies {
     implementation("androidx.camera:camera-video:${camerax_version}")
     implementation("androidx.camera:camera-view:${camerax_version}")
 
+    // Media3 for Video Playback
+    val media3_version = "1.3.1"
+    implementation("androidx.media3:media3-exoplayer:${media3_version}")
+    implementation("androidx.media3:media3-ui:${media3_version}")
+    implementation("androidx.media3:media3-common:${media3_version}")
+
     // CRITICAL FIX: Add full Guava for Android to resolve ListenableFuture access issues
     implementation("com.google.guava:guava:31.1-android")
     implementation("androidx.concurrent:concurrent-futures-ktx:1.1.0")

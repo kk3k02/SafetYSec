@@ -7,6 +7,7 @@ import android.os.Vibrator
 import android.os.VibratorManager
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -28,7 +29,13 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.media3.common.MediaItem
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.delay
 import pt.a2025121082.isec.safetysec.data.model.Alert
 import pt.a2025121082.isec.safetysec.data.model.RuleType
@@ -46,6 +53,7 @@ import java.util.*
 fun ProtectedHistoryScreen(vm: AppViewModel) {
     val st = vm.state
     val sdf = remember { SimpleDateFormat("HH:mm:ss dd/MM", Locale.getDefault()) }
+    var selectedAlertForVideo by remember { mutableStateOf<Alert?>(null) }
 
     Column(
         modifier = Modifier
@@ -72,20 +80,34 @@ fun ProtectedHistoryScreen(vm: AppViewModel) {
             ) {
                 item { Spacer(Modifier.height(8.dp)) }
                 items(st.myAlerts) { alert ->
-                    AlertHistoryItem(alert, sdf)
+                    AlertHistoryItem(
+                        alert = alert, 
+                        sdf = sdf,
+                        onClick = { if (!alert.videoUrl.isNullOrBlank()) selectedAlertForVideo = alert }
+                    )
                 }
                 item { Spacer(Modifier.height(16.dp)) }
             }
         }
     }
+
+    selectedAlertForVideo?.let { alert ->
+        VideoPlaybackDialog(
+            videoUrl = alert.videoUrl!!,
+            onDismiss = { selectedAlertForVideo = null }
+        )
+    }
 }
 
 @Composable
-fun AlertHistoryItem(alert: Alert, sdf: SimpleDateFormat) {
+fun AlertHistoryItem(alert: Alert, sdf: SimpleDateFormat, onClick: () -> Unit) {
     val isCancelled = alert.status == "CANCELLED"
+    val hasVideo = !alert.videoUrl.isNullOrBlank()
     
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = hasVideo, onClick = onClick),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(
             containerColor = if (isCancelled) Color(0xFFF8F9FA) else Color(0xFFFFF5F5)
@@ -125,6 +147,15 @@ fun AlertHistoryItem(alert: Alert, sdf: SimpleDateFormat) {
                     )
                 }
                 
+                if (hasVideo) {
+                    Icon(
+                        Icons.Default.PlayCircle, 
+                        contentDescription = "Has Video", 
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(end = 8.dp)
+                    )
+                }
+
                 Text(
                     text = sdf.format(Date(alert.timestamp)),
                     style = MaterialTheme.typography.labelSmall,
@@ -147,6 +178,73 @@ fun AlertHistoryItem(alert: Alert, sdf: SimpleDateFormat) {
                         style = MaterialTheme.typography.bodySmall,
                         color = Color.Gray
                     )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun VideoPlaybackDialog(videoUrl: String, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val exoPlayer = remember {
+        ExoPlayer.Builder(context).build().apply {
+            setMediaItem(MediaItem.fromUri(videoUrl))
+            prepare()
+            playWhenReady = true
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose { exoPlayer.release() }
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth(0.95f)
+                .wrapContentHeight()
+                .padding(16.dp),
+            shape = RoundedCornerShape(24.dp)
+        ) {
+            Column(Modifier.padding(16.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Evidence Video", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, contentDescription = "Close")
+                    }
+                }
+                Spacer(Modifier.height(16.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(400.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color.Black)
+                ) {
+                    AndroidView(
+                        factory = { ctx ->
+                            PlayerView(ctx).apply {
+                                player = exoPlayer
+                                useController = true
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+                Spacer(Modifier.height(16.dp))
+                Button(
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Close Player")
                 }
             }
         }
