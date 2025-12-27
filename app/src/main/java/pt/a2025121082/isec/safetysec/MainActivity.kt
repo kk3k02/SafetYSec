@@ -122,7 +122,7 @@ private fun SafetYSecApp(
         authViewModel.refreshAuthState()
     }
 
-    LaunchedEffect(authState.isAuthenticated, appState.me) {
+    LaunchedEffect(authState.isAuthenticated, appState.me?.uid) {
         if (authState.isAuthenticated) {
             val me = appState.me
             if (me == null) {
@@ -137,7 +137,7 @@ private fun SafetYSecApp(
         }
     }
 
-    LaunchedEffect(authState.isAuthenticated, appState.me) {
+    LaunchedEffect(authState.isAuthenticated, appState.me?.uid) {
         if (!authState.isAuthenticated) return@LaunchedEffect
         val me = appState.me ?: return@LaunchedEffect
         val currentEntry = navController.currentBackStackEntry
@@ -261,6 +261,7 @@ fun EmergencyRecordingPopup(appViewModel: AppViewModel, secondsLeft: Int, onDism
         label = "recAlpha"
     )
 
+    // BINDUJEMY TYLKO TUTAJ - RAZ - Preview i VideoCapture razem
     LaunchedEffect(Unit) {
         val cameraProviderProvider = ProcessCameraProvider.getInstance(context)
         cameraProviderProvider.addListener({
@@ -270,12 +271,18 @@ fun EmergencyRecordingPopup(appViewModel: AppViewModel, secondsLeft: Int, onDism
             }
             val cameraSelector = CameraSelector.DEFAULT_FRONT_CAMERA
             try {
-                val useCases = mutableListOf<androidx.camera.core.UseCase>(preview)
-                appViewModel.videoCapture?.let { useCases.add(it) }
                 cameraProvider.unbindAll()
-                cameraProvider.bindToLifecycle(ProcessLifecycleOwner.get(), cameraSelector, *useCases.toTypedArray())
+                // BINDUJEMY oba use-case'y w jednym kroku
+                cameraProvider.bindToLifecycle(
+                    ProcessLifecycleOwner.get(), 
+                    cameraSelector, 
+                    preview, 
+                    appViewModel.videoCapture
+                )
+                // Gdy hardware jest zbindowany, odpalamy zapis w ViewModelu
+                appViewModel.startActualRecording()
             } catch (e: Exception) {
-                Log.e("RecordingPopup", "Use case binding failed", e)
+                Log.e("RecordingPopup", "Binding failed", e)
             }
         }, ContextCompat.getMainExecutor(context))
     }
@@ -365,7 +372,7 @@ fun MonitorGlobalAlertPopup(alert: Alert, onDismiss: () -> Unit) {
 @Composable
 fun VideoPlayer(videoUrl: String) {
     val context = LocalContext.current
-    val exoPlayer = remember { ExoPlayer.Builder(context).build().apply { setMediaItem(MediaItem.fromUri(videoUrl)); prepare(); playWhenReady = false } }
-    DisposableEffect(Unit) { onDispose { exoPlayer.release() } }
+    val exoPlayer = remember(videoUrl) { ExoPlayer.Builder(context).build().apply { setMediaItem(MediaItem.fromUri(videoUrl)); prepare(); playWhenReady = false } }
+    DisposableEffect(videoUrl) { onDispose { exoPlayer.release() } }
     AndroidView(factory = { ctx -> PlayerView(ctx).apply { player = exoPlayer; useController = true; setBackgroundColor(android.graphics.Color.BLACK) } }, modifier = Modifier.fillMaxSize())
 }

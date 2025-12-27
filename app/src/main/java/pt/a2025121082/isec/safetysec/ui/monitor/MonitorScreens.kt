@@ -1,9 +1,12 @@
 package pt.a2025121082.isec.safetysec.ui.monitor
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -12,6 +15,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -20,6 +24,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.hilt.navigation.compose.hiltViewModel
 import pt.a2025121082.isec.safetysec.data.model.*
 import pt.a2025121082.isec.safetysec.data.repository.MonitorRulesBundle
+import pt.a2025121082.isec.safetysec.ui.components.VideoPlayer
 import pt.a2025121082.isec.safetysec.viewmodel.AppViewModel
 import pt.a2025121082.isec.safetysec.viewmodel.AuthViewModel
 import java.text.SimpleDateFormat
@@ -177,6 +182,8 @@ fun ProtectedUserStatusCard(user: User, onRemove: () -> Unit) {
 
 @Composable
 fun AlertItem(alert: Alert, sdf: SimpleDateFormat) {
+    var showVideo by remember { mutableStateOf(false) }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF1F1))
@@ -202,6 +209,34 @@ fun AlertItem(alert: Alert, sdf: SimpleDateFormat) {
                     style = MaterialTheme.typography.bodySmall,
                     color = Color.DarkGray
                 )
+            }
+
+            if (!alert.videoUrl.isNullOrBlank()) {
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = { showVideo = !showVideo },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.Red)
+                ) {
+                    Icon(if (showVideo) Icons.Default.VisibilityOff else Icons.Default.PlayCircle, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(if (showVideo) "Hide Video Evidence" else "View Evidence Video")
+                }
+
+                AnimatedVisibility(visible = showVideo) {
+                    Box(
+                        modifier = Modifier
+                            .padding(top = 8.dp)
+                            .fillMaxWidth()
+                            .height(250.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color.Black),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        VideoPlayer(videoUrl = alert.videoUrl!!)
+                    }
+                }
             }
         }
     }
@@ -536,8 +571,7 @@ private fun RuleToggle(label: String, checked: Boolean, onChange: (Boolean) -> U
             .fillMaxWidth()
             .padding(vertical = 4.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
+        verticalAlignment = Alignment.CenterVertically) {
         Text(label, style = MaterialTheme.typography.bodyMedium)
         Switch(checked = checked, onCheckedChange = onChange)
     }

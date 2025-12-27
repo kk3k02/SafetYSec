@@ -49,6 +49,9 @@ class AuthRepository @Inject constructor(
 
     /** Returns the currently authenticated Firebase user. */
     fun getCurrentUser(): FirebaseUser? = auth.currentUser
+
+    /** Returns the current UID if authenticated. */
+    fun getCurrentUid(): String? = auth.currentUser?.uid
     
     suspend fun updatePassword(newPassword: String) {
         auth.currentUser?.updatePassword(newPassword)?.await() ?: throw IllegalStateException("Not authenticated.")

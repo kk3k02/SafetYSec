@@ -47,37 +47,54 @@ class AlertRepository @Inject constructor(
             location = locationProvider(),
             status = "SENT"
         )
+        
+        // 1. Zapis u Protected (Źródło prawdy)
         saveAlertToProtected(user.uid, sentAlert)
 
-        user.monitors.forEach { monitorId ->
-            firestore.collection("users").document(monitorId).collection("alerts").document(sentAlert.id).set(sentAlert).await()
+        // 2. Rozsyłanie do Monitorów (Fan-out)
+        val freshUserSnap = firestore.collection("users").document(user.uid).get().await()
+        val monitorIds = freshUserSnap.get("monitors") as? List<String> ?: emptyList()
+
+        monitorIds.forEach { monitorId ->
+            try {
+                firestore.collection("users").document(monitorId)
+                    .collection("alerts").document(sentAlert.id)
+                    .set(sentAlert).await()
+            } catch (e: Exception) {
+                Log.e("AlertRepo", "Fan-out failed for $monitorId: ${e.message}")
+            }
         }
         return sentAlert.id
     }
 
     suspend fun updateAlertWithVideo(alertId: String, user: User, videoUri: Uri) {
         try {
-            // Give system 2s to close the file handle
-            delay(2000)
+            delay(1000)
             val videoFile = File(videoUri.path ?: return)
-            if (!videoFile.exists() || videoFile.length() <= 0) return
+            if (!videoFile.exists()) return
 
-            // USE putBytes to avoid "Object does not exist" 404 errors with URIs
             val bytes = videoFile.readBytes()
             val storageRef = storage.reference.child("alerts_videos/alert_${alertId}.mp4")
-
-            Log.d("AlertRepo", "Uploading video bytes for alert: $alertId")
             storageRef.putBytes(bytes).await()
             val videoUrl = storageRef.downloadUrl.await().toString()
 
             val updates = mapOf("videoUrl" to videoUrl)
+            
+            // Aktualizacja u Protected
             firestore.collection("users").document(user.uid).collection("my_alerts").document(alertId).update(updates).await()
-            user.monitors.forEach { monitorId ->
-                firestore.collection("users").document(monitorId).collection("alerts").document(alertId).update(updates).await()
+            
+            // Aktualizacja u wszystkich Monitorów (natychmiastowe odświeżenie wideo)
+            val freshUserSnap = firestore.collection("users").document(user.uid).get().await()
+            val monitorIds = freshUserSnap.get("monitors") as? List<String> ?: emptyList()
+
+            monitorIds.forEach { mid ->
+                try {
+                    firestore.collection("users").document(mid).collection("alerts").document(alertId).update(updates).await()
+                } catch (e: Exception) { /* Alert might be dismissed */ }
             }
             videoFile.delete()
         } catch (e: Exception) {
-            Log.e("AlertRepo", "Upload FAILED: ${e.message}")
+            Log.e("AlertRepo", "Video Update FAILED: ${e.message}")
         }
     }
 
