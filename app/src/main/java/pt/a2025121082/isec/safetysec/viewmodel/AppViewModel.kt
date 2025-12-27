@@ -50,6 +50,7 @@ data class AppUiState(
     val isCancelWindowOpen: Boolean = false,
     val cancelSecondsLeft: Int = 0,
     val typedCancelCode: String? = null,
+    val cancelPinError: String? = null, // New field for PIN errors
     val isFallDetectionEnabled: Boolean = false,
     val pendingAlerts: List<Alert> = emptyList(),
     val userInactivitySeconds: Int = 0,
@@ -91,7 +92,13 @@ class AppViewModel @Inject constructor(
         val me = state.me ?: return@launch
         if (state.isCancelWindowOpen) return@launch
 
-        state = state.copy(isCancelWindowOpen = true, cancelSecondsLeft = 10, typedCancelCode = null, isAlertSent = false)
+        state = state.copy(
+            isCancelWindowOpen = true, 
+            cancelSecondsLeft = 10, 
+            typedCancelCode = null, 
+            cancelPinError = null, // Reset error on start
+            isAlertSent = false
+        )
         
         val tickerJob = viewModelScope.launch {
             while (state.cancelSecondsLeft > 0) {
@@ -109,7 +116,7 @@ class AppViewModel @Inject constructor(
         )
         
         tickerJob.cancel()
-        state = state.copy(isCancelWindowOpen = false, cancelSecondsLeft = 0, typedCancelCode = null)
+        state = state.copy(isCancelWindowOpen = false, cancelSecondsLeft = 0, typedCancelCode = null, cancelPinError = null)
         
         if (!sent) {
             state = state.copy(error = "Alert cancelled.")
@@ -117,6 +124,19 @@ class AppViewModel @Inject constructor(
             state = state.copy(isAlertSent = true)
         }
         refreshProtectedData(me.uid)
+    }
+
+    /**
+     * Logic to try and cancel the current alert with a PIN.
+     * Sets an error message if the PIN is incorrect.
+     */
+    fun tryCancelAlert(typed: String) {
+        val correctPin = state.me?.alertCancelCode ?: "0000"
+        if (typed == correctPin) {
+            state = state.copy(typedCancelCode = typed, cancelPinError = null)
+        } else {
+            state = state.copy(cancelPinError = "Incorrect PIN code. Try again.")
+        }
     }
 
     fun startMonitoringDashboard(monitorUid: String, context: Context?) {
@@ -297,7 +317,6 @@ class AppViewModel @Inject constructor(
     fun consumeRemovalSuccess() { state = state.copy(isRemovalSuccessful = false) }
     fun consumeRequestSuccess() { state = state.copy(isRequestSuccessful = false) }
     fun consumeAdditionSuccess() { state = state.copy(isAdditionSuccessful = false) }
-    fun tryCancelAlert(typed: String) { state = state.copy(typedCancelCode = typed) }
     
     fun generateOtp() = viewModelScope.launch { try { val c = authRepo.generateAssociationCode(); state = state.copy(myOtp = c) } catch (t: Throwable) { state = state.copy(error = t.message) } }
     fun linkWithOtp(code: String) = viewModelScope.launch { try { authRepo.linkWithAssociationCode(code); state = state.copy(isLinkingSuccessful = true); loadMyProfile() } catch (t: Throwable) { state = state.copy(error = t.message) } }
@@ -305,7 +324,6 @@ class AppViewModel @Inject constructor(
     fun removeProtectedUser(protectedId: String) = viewModelScope.launch { try { authRepo.removeAssociation(state.me!!.uid, protectedId); state = state.copy(isRemovalSuccessful = true, linkedProtectedUsers = state.linkedProtectedUsers.filter { it.uid != protectedId }) } catch (t: Throwable) { state = state.copy(error = t.message) } }
     fun requestRulesForProtected(pUid: String, types: List<RuleType>, params: RuleParams) = viewModelScope.launch { try { val rules = types.map { MonitoringRule(it, params, true) }; monitoringRepo.requestRules(pUid, state.me!!.uid, rules); state = state.copy(isRequestSuccessful = true); loadRulesForProtected(pUid) } catch (t: Throwable) { state = state.copy(error = t.message) } }
     fun loadRulesForProtected(pUid: String) = viewModelScope.launch { try { val bundles = monitoringRepo.getRulesForProtected(pUid); state = state.copy(rulesForSelectedProtected = bundles.find { it.monitorId == state.me!!.uid }) } catch (t: Throwable) { state = state.copy(error = t.message) } }
-    
     fun saveAuthorizations(mUid: String, auth: List<RuleType>, inactivityMin: Int?) = viewModelScope.launch { try { monitoringRepo.saveAuthorizations(state.me!!.uid, mUid, auth, inactivityMin); refreshProtectedData(state.me!!.uid) } catch (t: Throwable) { state = state.copy(error = t.message) } }
     fun addTimeWindow(days: List<Int>, s: Int, e: Int) = viewModelScope.launch { val w = TimeWindow(daysOfWeek = days, startHour = s, endHour = e); if (!w.checkValid()) return@launch; try { monitoringRepo.addTimeWindow(state.me!!.uid, w); state = state.copy(timeWindows = state.timeWindows + w, isAdditionSuccessful = true) } catch (t: Throwable) { state = state.copy(error = t.message) } }
     fun removeTimeWindow(wId: String) = viewModelScope.launch { try { monitoringRepo.deleteTimeWindow(state.me!!.uid, wId); state = state.copy(isRemovalSuccessful = true, timeWindows = state.timeWindows.filter { it.id != wId }) } catch (t: Throwable) { state = state.copy(error = t.message) } }
