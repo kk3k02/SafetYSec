@@ -1,5 +1,5 @@
 /**
- * Module-level Gradle build script (Kotlin DSL) for the SafetYSec app.
+ * Module-level Gradle build script (Kotlin DSL).
  * Configured for Kotlin 1.9.24 and kapt.
  */
 plugins {
@@ -46,7 +46,6 @@ android {
         compose = true
     }
 
-    // Required for Kotlin < 2.0
     composeOptions {
         kotlinCompilerExtensionVersion = libs.versions.composeCompiler.get()
     }
@@ -74,6 +73,19 @@ dependencies {
     implementation("com.google.dagger:hilt-android:2.51.1")
     kapt("com.google.dagger:hilt-compiler:2.51.1")
     implementation("androidx.hilt:hilt-navigation-compose:1.2.0")
+
+    // CameraX dependencies
+    val camerax_version = "1.3.4"
+    implementation("androidx.camera:camera-core:${camerax_version}")
+    implementation("androidx.camera:camera-camera2:${camerax_version}")
+    implementation("androidx.camera:camera-lifecycle:${camerax_version}")
+    implementation("androidx.camera:camera-video:${camerax_version}")
+    implementation("androidx.camera:camera-view:${camerax_version}")
+
+    // CRITICAL FIX: Add full Guava for Android to resolve ListenableFuture access issues
+    implementation("com.google.guava:guava:31.1-android")
+    implementation("androidx.concurrent:concurrent-futures-ktx:1.1.0")
+    implementation("androidx.lifecycle:lifecycle-process:2.6.1")
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

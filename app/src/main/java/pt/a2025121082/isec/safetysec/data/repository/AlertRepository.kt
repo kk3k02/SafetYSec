@@ -32,24 +32,33 @@ class AlertRepository @Inject constructor(
         user: User,
         cancelCodeProvider: suspend () -> String?,
         locationProvider: suspend () -> GeoPoint?,
-        videoUriProvider: suspend () -> Uri?
+        videoUriProvider: suspend () -> Uri? // PROVIDER FOR RECORDED VIDEO
     ): Boolean {
-        val alert = Alert(
-            type = ruleType,
-            protectedId = user.uid,
-            protectedName = user.name,
-            location = locationProvider(),
-            status = "CANCELLED"
-        )
-
+        // 1) Wait for 10s cancel window
         val cancelled = waitForCancel(user.alertCancelCode, cancelCodeProvider)
         
         if (cancelled) {
-            saveAlertToProtected(user.uid, alert.copy(status = "CANCELLED"))
+            saveAlertToProtected(user.uid, Alert(type = ruleType, protectedId = user.uid, protectedName = user.name, status = "CANCELLED"))
             return false
         }
 
-        val sentAlert = alert.copy(status = "SENT")
+        // 2) Collect context
+        val location = locationProvider()
+        val videoUri = videoUriProvider()
+        
+        // 3) Upload video to Storage if exists
+        val videoUrl = videoUri?.let { uploadVideo(user.uid, it) }
+
+        val sentAlert = Alert(
+            type = ruleType,
+            protectedId = user.uid,
+            protectedName = user.name,
+            location = location,
+            videoUrl = videoUrl,
+            status = "SENT"
+        )
+        
+        // 4) Save locally and to monitors
         saveAlertToProtected(user.uid, sentAlert)
 
         if (user.monitors.isNotEmpty()) {
@@ -61,22 +70,21 @@ class AlertRepository @Inject constructor(
         return true
     }
 
+    private suspend fun uploadVideo(uid: String, uri: Uri): String {
+        val fileName = "alert_${uid}_${System.currentTimeMillis()}.mp4"
+        val ref = storage.reference.child("alerts_videos/$fileName")
+        ref.putFile(uri).await()
+        return ref.downloadUrl.await().toString()
+    }
+
     private suspend fun saveAlertToProtected(uid: String, alert: Alert) {
         firestore.collection("users").document(uid)
             .collection("my_alerts").document(alert.id).set(alert).await()
     }
 
-    /**
-     * Removes the alert from the monitor's active alerts collection.
-     * This ensures the alert won't pop up again after being dismissed.
-     */
     suspend fun deleteAlertFromMonitor(monitorUid: String, alertId: String) {
-        try {
-            firestore.collection("users").document(monitorUid)
-                .collection("alerts").document(alertId).delete().await()
-        } catch (e: Exception) {
-            Log.e("AlertRepository", "Failed to delete alert $alertId for monitor $monitorUid", e)
-        }
+        firestore.collection("users").document(monitorUid)
+            .collection("alerts").document(alertId).delete().await()
     }
 
     suspend fun getProtectedAlertHistory(uid: String): List<Alert> {

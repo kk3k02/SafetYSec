@@ -13,6 +13,5 @@ data class User(
     val protectedUsers: List<String> = emptyList(),
     val associationCode: String? = null,
     val associationCodeCreatedAt: Long? = null,
-    /** Global inactivity threshold in minutes, configured in profile */
     val inactivityDurationMin: Int = 15
 )
