@@ -59,6 +59,10 @@ class AuthViewModel @Inject constructor(
 
                 val snap = db.collection("users").document(uid).get().await()
                 val name = snap.getString("name")
+                val storedEmail = snap.getString("email")
+                if (!email.isNullOrBlank() && email != storedEmail) {
+                    db.collection("users").document(uid).update("email", email).await()
+                }
 
                 uiState = uiState.copy(
                     accountName = name,
@@ -267,6 +271,7 @@ class AuthViewModel @Inject constructor(
                 }
 
                 // Update email in FirebaseAuth + Firestore (if changed)
+                var emailChangeRequested = false
                 if (email.isNotBlank() && email != oldEmail) {
                     val pwd = currentPassword?.trim().orEmpty()
                     if (pwd.isBlank()) {
@@ -278,16 +283,16 @@ class AuthViewModel @Inject constructor(
                     val cred = EmailAuthProvider.getCredential(oldEmail, pwd)
                     user.reauthenticate(cred).await()
 
-                    user.updateEmail(email).await()
-                    user.sendEmailVerification().await()
-
-                    // Keep Firestore in sync
-                    db.collection("users").document(uid)
-                        .update(mapOf("email" to email))
-                        .await()
+                    user.verifyBeforeUpdateEmail(email).await()
+                    emailChangeRequested = true
                 }
 
-                uiState = uiState.copy(message = "Profile updated successfully.")
+                val message = if (emailChangeRequested) {
+                    "Verification email sent to the new address. Confirm it to finish the update."
+                } else {
+                    "Profile updated successfully."
+                }
+                uiState = uiState.copy(message = message)
                 loadAccountInfo() // Refresh displayed account data
             } catch (ex: Exception) {
                 uiState = uiState.copy(error = "Profile update failed: ${ex.message}")

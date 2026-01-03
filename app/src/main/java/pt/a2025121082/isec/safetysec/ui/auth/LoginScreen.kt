@@ -18,7 +18,6 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.launch
 import pt.a2025121082.isec.safetysec.viewmodel.AuthViewModel
 
 /**
@@ -37,7 +36,6 @@ fun LoginScreen(
 
     val state = viewModel.uiState
     val snackbarHostState = remember { SnackbarHostState() }
-    val scope = rememberCoroutineScope()
 
     LaunchedEffect(state.error) {
         state.error?.let {

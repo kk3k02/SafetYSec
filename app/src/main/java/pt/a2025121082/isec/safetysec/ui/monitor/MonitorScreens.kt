@@ -12,6 +12,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.MenuAnchorType
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -211,7 +212,8 @@ fun AlertItem(alert: Alert, sdf: SimpleDateFormat) {
                 )
             }
 
-            if (!alert.videoUrl.isNullOrBlank()) {
+            val videoUrl = alert.videoUrl
+            if (!videoUrl.isNullOrBlank()) {
                 Spacer(Modifier.height(8.dp))
                 OutlinedButton(
                     onClick = { showVideo = !showVideo },
@@ -234,7 +236,7 @@ fun AlertItem(alert: Alert, sdf: SimpleDateFormat) {
                             .background(Color.Black),
                         contentAlignment = Alignment.Center
                     ) {
-                        VideoPlayer(videoUrl = alert.videoUrl!!)
+                        VideoPlayer(videoUrl = videoUrl)
                     }
                 }
             }
@@ -333,7 +335,9 @@ fun MonitorRulesScreen(vm: AppViewModel) {
                     readOnly = true,
                     label = { Text("Protected User") },
                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-                    modifier = Modifier.fillMaxWidth().menuAnchor()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .menuAnchor(MenuAnchorType.PrimaryNotEditable, enabled = true)
                 )
                 ExposedDropdownMenu(
                     expanded = expanded,
@@ -416,15 +420,17 @@ fun MonitorRulesScreen(vm: AppViewModel) {
         }
     }
 
-    if (showRequestDialog && selectedUser != null) {
-        RequestRulesDialog(
-            user = selectedUser!!,
-            onDismiss = { showRequestDialog = false },
-            onSend = { types, params ->
-                vm.requestRulesForProtected(selectedUser!!.uid, types, params)
-                showRequestDialog = false
-            }
-        )
+    if (showRequestDialog) {
+        selectedUser?.let { user ->
+            RequestRulesDialog(
+                user = user,
+                onDismiss = { showRequestDialog = false },
+                onSend = { types, params ->
+                    vm.requestRulesForProtected(user.uid, types, params)
+                    showRequestDialog = false
+                }
+            )
+        }
     }
 
     if (showRequestSuccessDialog) {

@@ -53,7 +53,9 @@ class AlertRepository @Inject constructor(
 
         // 2. Rozsyłanie do Monitorów (Fan-out)
         val freshUserSnap = firestore.collection("users").document(user.uid).get().await()
-        val monitorIds = freshUserSnap.get("monitors") as? List<String> ?: emptyList()
+        val monitorIds = (freshUserSnap.get("monitors") as? List<*>)
+            ?.mapNotNull { it as? String }
+            ?: emptyList()
 
         monitorIds.forEach { monitorId ->
             try {
@@ -85,7 +87,9 @@ class AlertRepository @Inject constructor(
             
             // Aktualizacja u wszystkich Monitorów (natychmiastowe odświeżenie wideo)
             val freshUserSnap = firestore.collection("users").document(user.uid).get().await()
-            val monitorIds = freshUserSnap.get("monitors") as? List<String> ?: emptyList()
+            val monitorIds = (freshUserSnap.get("monitors") as? List<*>)
+                ?.mapNotNull { it as? String }
+                ?: emptyList()
 
             monitorIds.forEach { mid ->
                 try {

@@ -92,10 +92,12 @@ fun ProtectedHistoryScreen(vm: AppViewModel) {
     }
 
     selectedAlertForVideo?.let { alert ->
-        VideoPlaybackDialog(
-            videoUrl = alert.videoUrl!!,
-            onDismiss = { selectedAlertForVideo = null }
-        )
+        alert.videoUrl?.let { videoUrl ->
+            VideoPlaybackDialog(
+                videoUrl = videoUrl,
+                onDismiss = { selectedAlertForVideo = null }
+            )
+        }
     }
 }
 
@@ -493,7 +495,7 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
                                 Icon(Icons.Default.Delete, contentDescription = "Remove", tint = MaterialTheme.colorScheme.error)
                             }
                         }
-                        Divider(Modifier.padding(vertical = 12.dp))
+                        HorizontalDivider(Modifier.padding(vertical = 12.dp))
                         Text("Grant Permissions:", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                         
                         RuleType.values().forEach { type ->
@@ -546,7 +548,13 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
                 Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("Share this 6-digit code with your Monitor.")
                     Spacer(Modifier.height(16.dp))
-                    Text(text = st.myOtp!!, style = MaterialTheme.typography.displayMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    val otp = st.myOtp
+                    Text(
+                        text = otp,
+                        style = MaterialTheme.typography.displayMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
                     Spacer(Modifier.height(8.dp))
                     Text("Code expires in 10 minutes.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
                 }
@@ -611,7 +619,6 @@ fun ProtectedProfileScreen(
 ) {
     val st = vm.state
     val authSt = authVm.uiState
-    val context = LocalContext.current
     var pin by remember { mutableStateOf("") }
     var inactivityMin by remember(st.inactivityDurationMin) { mutableStateOf(st.inactivityDurationMin.toString()) }
     var showSecurityPopup by remember { mutableStateOf(false) }

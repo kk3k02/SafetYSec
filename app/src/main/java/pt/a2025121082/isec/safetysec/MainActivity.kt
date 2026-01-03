@@ -195,7 +195,7 @@ private fun SafetYSecApp(
                 appViewModel.loadMyProfile()
             } else {
                 if (me.roles.contains("Monitor")) {
-                    appViewModel.startMonitoringDashboard(me.uid, context)
+                    appViewModel.startMonitoringDashboard(me.uid)
                 }
             }
         } else {

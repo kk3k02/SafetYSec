@@ -65,6 +65,7 @@ fun ProfileScreen(
                 title = { Text("Profile Settings") },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
+                        @Suppress("DEPRECATION")
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back")
                     }
                 }

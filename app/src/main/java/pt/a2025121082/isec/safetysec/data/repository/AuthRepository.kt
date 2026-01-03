@@ -59,8 +59,7 @@ class AuthRepository @Inject constructor(
 
     suspend fun updateEmail(newEmail: String) {
         val user = auth.currentUser ?: throw IllegalStateException("Not authenticated.")
-        user.updateEmail(newEmail.trim()).await()
-        usersCol.document(user.uid).update("email", newEmail.trim()).await()
+        user.verifyBeforeUpdateEmail(newEmail.trim()).await()
     }
 
     suspend fun reauthenticate(password: String) {

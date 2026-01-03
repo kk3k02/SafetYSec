@@ -184,7 +184,7 @@ class AppViewModel @Inject constructor(
 
     fun triggerPanic() { triggerAlertWithTimer(RuleType.PANIC) }
 
-    fun startMonitoringDashboard(monitorUid: String, context: Context?) {
+    fun startMonitoringDashboard(monitorUid: String) {
         if (monitorPopupListener == null) {
             monitorPopupListener = db.collection("users").document(monitorUid).collection("alerts")
                 .addSnapshotListener { snapshot, _ ->
@@ -263,7 +263,7 @@ class AppViewModel @Inject constructor(
                     }
                     
                     if (isMonitor) {
-                        startMonitoringDashboard(me.uid, null)
+                        startMonitoringDashboard(me.uid)
                     } else if (wasMonitor) {
                         stopMonitoringDashboard()
                     }
