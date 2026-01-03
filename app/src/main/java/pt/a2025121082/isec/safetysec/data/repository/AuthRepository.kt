@@ -72,8 +72,12 @@ class AuthRepository @Inject constructor(
     // --- PROFILE METHODS ---
 
     suspend fun getUserProfile(uid: String = requireCurrentUid()): User {
-        val snap = usersCol.document(uid).get().await()
-        return snap.toObject(User::class.java) ?: throw IllegalStateException("Profile not found.")
+        return try {
+            val snap = usersCol.document(uid).get().await()
+            snap.toObject(User::class.java) ?: User(uid = uid)
+        } catch (e: Exception) {
+            User(uid = uid)
+        }
     }
 
     suspend fun updateUserName(newName: String) {
