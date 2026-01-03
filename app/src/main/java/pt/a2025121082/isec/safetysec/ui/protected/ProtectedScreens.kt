@@ -659,27 +659,6 @@ fun ProtectedProfileScreen(
             modifier = Modifier.fillMaxWidth()
         ) { Text("Change PIN") }
         
-        Spacer(Modifier.height(16.dp))
-        OutlinedTextField(
-            value = inactivityMin,
-            onValueChange = { inactivityMin = it },
-            label = { Text("Inactivity alert minutes") },
-            placeholder = { Text("e.g. 15") },
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            modifier = Modifier.fillMaxWidth()
-        )
-        Spacer(Modifier.height(12.dp))
-        Button(
-            onClick = {
-                securityPopupMessage = "Your inactivity settings have been updated."
-                vm.updateInactivityDuration(inactivityMin)
-            },
-            modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
-        ) {
-            Text("Update Inactivity Settings")
-        }
-
         Spacer(Modifier.height(24.dp))
         Button(onClick = onSwitchToMonitor, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)) { Text("Switch to Monitor Mode") }
 
