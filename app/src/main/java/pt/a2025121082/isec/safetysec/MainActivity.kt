@@ -73,20 +73,20 @@ import java.util.*
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
-    
+
     private var appViewModel: AppViewModel? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        setContent { 
-            SafetYSecTheme { 
-                Surface(color = MaterialTheme.colorScheme.background) { 
+        setContent {
+            SafetYSecTheme {
+                Surface(color = MaterialTheme.colorScheme.background) {
                     val avm: AppViewModel = hiltViewModel()
                     this.appViewModel = avm
-                    SafetYSecApp(appViewModel = avm) 
-                } 
-            } 
+                    SafetYSecApp(appViewModel = avm)
+                }
+            }
         }
     }
 
@@ -118,15 +118,15 @@ private fun SafetYSecApp(
     val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
 
     val permissionsToRequest = arrayOf(
-        Manifest.permission.CAMERA, 
+        Manifest.permission.CAMERA,
         Manifest.permission.RECORD_AUDIO,
         Manifest.permission.ACCESS_FINE_LOCATION,
         Manifest.permission.ACCESS_COARSE_LOCATION
     )
-    var permissionsGranted by remember { 
-        mutableStateOf(permissionsToRequest.all { ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED }) 
+    var permissionsGranted by remember {
+        mutableStateOf(permissionsToRequest.all { ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED })
     }
-    
+
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { results ->
         permissionsGranted = results.values.all { it }
     }
@@ -144,7 +144,7 @@ private fun SafetYSecApp(
         val builder = LocationSettingsRequest.Builder()
             .addLocationRequest(locationRequest)
             .setAlwaysShow(true)
-        
+
         val client = LocationServices.getSettingsClient(context)
         client.checkLocationSettings(builder.build())
             .addOnFailureListener { exception ->
@@ -208,7 +208,7 @@ private fun SafetYSecApp(
         val me = appState.me ?: return@LaunchedEffect
         val currentEntry = navController.currentBackStackEntry
         val currentRoute = currentEntry?.destination?.route
-        
+
         if (currentRoute in setOf(Routes.PROTECTED_FLOW, Routes.MONITOR_FLOW, Routes.PROFILE)) return@LaunchedEffect
 
         val target = when {
@@ -216,7 +216,7 @@ private fun SafetYSecApp(
             me.roles.contains("Monitor") && !me.roles.contains("Protected") -> Routes.MONITOR_FLOW
             else -> Routes.ROLE_PICKER
         }
-        
+
         if (currentRoute != target) {
             navController.navigate(target) {
                 popUpTo(navController.graph.findStartDestination().id) { inclusive = true }
@@ -262,7 +262,7 @@ private fun SafetYSecApp(
                 ProtectedFlow(
                     appViewModel = appViewModel,
                     onSwitchToMonitor = { navController.navigate(Routes.MONITOR_FLOW) },
-                    onLogout = { 
+                    onLogout = {
                         authViewModel.logout()
                         navController.navigate(Routes.LOGIN) { popUpTo(0) }
                     },
@@ -288,7 +288,7 @@ private fun SafetYSecApp(
                 onDismiss = { appViewModel.dismissIncomingAlert() }
             )
         }
-        
+
         appState.showInactivityAlertPopup?.let { minutes ->
             AlertDialog(
                 onDismissRequest = { appViewModel.dismissInactivityPopup() },
@@ -340,9 +340,9 @@ fun EmergencyRecordingPopup(appViewModel: AppViewModel, secondsLeft: Int, onDism
                 cameraProvider.unbindAll()
                 // BINDUJEMY oba use-case'y w jednym kroku
                 cameraProvider.bindToLifecycle(
-                    ProcessLifecycleOwner.get(), 
-                    cameraSelector, 
-                    preview, 
+                    ProcessLifecycleOwner.get(),
+                    cameraSelector,
+                    preview,
                     appViewModel.videoCapture
                 )
                 // Gdy hardware jest zbindowany, odpalamy zapis w ViewModelu

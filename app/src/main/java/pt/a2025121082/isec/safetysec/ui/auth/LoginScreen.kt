@@ -83,15 +83,15 @@ fun LoginScreen(
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(72.dp)
             )
-            
+
             Spacer(Modifier.height(16.dp))
-            
+
             Text(
                 text = "Welcome Back",
                 style = MaterialTheme.typography.headlineLarge,
                 fontWeight = FontWeight.ExtraBold
             )
-            
+
             Text(
                 text = "Sign in to continue to SafetYSec",
                 style = MaterialTheme.typography.bodyMedium,

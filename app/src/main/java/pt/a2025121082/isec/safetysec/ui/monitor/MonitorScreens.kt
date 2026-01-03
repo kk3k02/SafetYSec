@@ -97,24 +97,24 @@ fun MonitorDashboardScreen(vm: AppViewModel) {
                 AlertItem(alert, sdf)
             }
         }
-        
+
         item {
-            state.error?.let { 
-                Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp)) 
+            state.error?.let {
+                Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp))
             }
         }
     }
 
     if (showRemovalSuccessDialog) {
         AlertDialog(
-            onDismissRequest = { 
+            onDismissRequest = {
                 showRemovalSuccessDialog = false
                 vm.consumeRemovalSuccess()
             },
             title = { Text("User Unlinked") },
             text = { Text("The protected user has been successfully unlinked from your dashboard.") },
             confirmButton = {
-                TextButton(onClick = { 
+                TextButton(onClick = {
                     showRemovalSuccessDialog = false
                     vm.consumeRemovalSuccess()
                 }) {
@@ -281,17 +281,17 @@ fun MonitorLinkScreen(vm: AppViewModel) {
 
     if (showSuccessDialog) {
         AlertDialog(
-            onDismissRequest = { 
+            onDismissRequest = {
                 showSuccessDialog = false
                 vm.consumeLinkingSuccess()
             },
             title = { Text("Success") },
             text = { Text("Protected user successfully linked!") },
             confirmButton = {
-                TextButton(onClick = { 
+                TextButton(onClick = {
                     showSuccessDialog = false
                     vm.consumeLinkingSuccess()
-                    code = "" 
+                    code = ""
                 }) {
                     Text("OK")
                 }
@@ -304,7 +304,7 @@ fun MonitorLinkScreen(vm: AppViewModel) {
 @Composable
 fun MonitorRulesScreen(vm: AppViewModel) {
     val st = vm.state
-    
+
     var expanded by remember { mutableStateOf(false) }
     var selectedUser by remember { mutableStateOf<User?>(null) }
     var showRequestDialog by remember { mutableStateOf(false) }
@@ -324,7 +324,7 @@ fun MonitorRulesScreen(vm: AppViewModel) {
         item {
             Text("Monitoring Configuration", style = MaterialTheme.typography.titleLarge)
             Spacer(Modifier.height(16.dp))
-            
+
             ExposedDropdownMenuBox(
                 expanded = expanded,
                 onExpandedChange = { expanded = !expanded }
@@ -368,7 +368,7 @@ fun MonitorRulesScreen(vm: AppViewModel) {
                             Text("Current Authorizations", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                             Text("Green = Authorized, Red = Denied", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
                             Spacer(Modifier.height(8.dp))
-                            
+
                             RuleType.values().forEach { type ->
                                 val isAuth = bundle.authorizedTypes.contains(type)
                                 Row(
@@ -410,7 +410,7 @@ fun MonitorRulesScreen(vm: AppViewModel) {
                     Spacer(Modifier.width(8.dp))
                     Text("Request New Configuration")
                 }
-                
+
                 st.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp)) }
             }
         } else {
@@ -435,14 +435,14 @@ fun MonitorRulesScreen(vm: AppViewModel) {
 
     if (showRequestSuccessDialog) {
         AlertDialog(
-            onDismissRequest = { 
+            onDismissRequest = {
                 showRequestSuccessDialog = false
                 vm.consumeRequestSuccess()
             },
             title = { Text("Request Sent") },
             text = { Text("The monitoring configuration request has been sent to the protected user.") },
             confirmButton = {
-                TextButton(onClick = { 
+                TextButton(onClick = {
                     showRequestSuccessDialog = false
                     vm.consumeRequestSuccess()
                 }) {

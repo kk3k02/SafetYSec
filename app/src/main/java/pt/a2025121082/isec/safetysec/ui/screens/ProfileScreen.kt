@@ -141,130 +141,130 @@ fun ProfileScreen(
                         Text("Update Profile")
                     }
                 }
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 16.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        text = "Security",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    Button(
-                        onClick = { showPasswordChangeDialog = true },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 16.dp),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            text = "Security",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
                         )
-                    ) {
-                        Icon(Icons.Default.Lock, contentDescription = null)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Change Password")
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Button(
+                            onClick = { showPasswordChangeDialog = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                        ) {
+                            Icon(Icons.Default.Lock, contentDescription = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Change Password")
+                        }
                     }
                 }
             }
         }
-    }
 
-    // --- Dialogs ---
+        // --- Dialogs ---
 
-    // Email Change Confirmation Dialog (Requires current password)
-    if (showEmailChangeDialog) {
-        AlertDialog(
-            onDismissRequest = { showEmailChangeDialog = false },
-            title = { Text("Confirm Email Change") },
-            text = {
-                Column {
-                    Text("Changing your email address requires re-authentication. Please enter your current password.")
-                    Spacer(modifier = Modifier.height(16.dp))
-                    OutlinedTextField(
-                        value = currentPasswordForProfile,
-                        onValueChange = { currentPasswordForProfile = it },
-                        label = { Text("Current Password") },
-                        visualTransformation = PasswordVisualTransformation(),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        viewModel.updateProfile(name, email, currentPasswordForProfile)
-                        showEmailChangeDialog = false
-                        currentPasswordForProfile = ""
+        // Email Change Confirmation Dialog (Requires current password)
+        if (showEmailChangeDialog) {
+            AlertDialog(
+                onDismissRequest = { showEmailChangeDialog = false },
+                title = { Text("Confirm Email Change") },
+                text = {
+                    Column {
+                        Text("Changing your email address requires re-authentication. Please enter your current password.")
+                        Spacer(modifier = Modifier.height(16.dp))
+                        OutlinedTextField(
+                            value = currentPasswordForProfile,
+                            onValueChange = { currentPasswordForProfile = it },
+                            label = { Text("Current Password") },
+                            visualTransformation = PasswordVisualTransformation(),
+                            modifier = Modifier.fillMaxWidth()
+                        )
                     }
-                ) {
-                    Text("Confirm")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showEmailChangeDialog = false }) {
-                    Text("Cancel")
-                }
-            }
-        )
-    }
-
-    // Password Change Dialog
-    if (showPasswordChangeDialog) {
-        AlertDialog(
-            onDismissRequest = { showPasswordChangeDialog = false },
-            title = { Text("Change Password") },
-            text = {
-                Column {
-                    OutlinedTextField(
-                        value = currentPasswordForPwdChange,
-                        onValueChange = { currentPasswordForPwdChange = it },
-                        label = { Text("Current Password") },
-                        visualTransformation = PasswordVisualTransformation(),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = newPassword,
-                        onValueChange = { newPassword = it },
-                        label = { Text("New Password") },
-                        visualTransformation = PasswordVisualTransformation(),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = confirmNewPassword,
-                        onValueChange = { confirmNewPassword = it },
-                        label = { Text("Confirm New Password") },
-                        visualTransformation = PasswordVisualTransformation(),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        if (newPassword == confirmNewPassword) {
-                            viewModel.changePassword(currentPasswordForPwdChange, newPassword)
-                            showPasswordChangeDialog = false
-                            currentPasswordForPwdChange = ""
-                            newPassword = ""
-                            confirmNewPassword = ""
-                        } else {
-                            // Local error check could be added here
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            viewModel.updateProfile(name, email, currentPasswordForProfile)
+                            showEmailChangeDialog = false
+                            currentPasswordForProfile = ""
                         }
+                    ) {
+                        Text("Confirm")
                     }
-                ) {
-                    Text("Change")
+                },
+                dismissButton = {
+                    TextButton(onClick = { showEmailChangeDialog = false }) {
+                        Text("Cancel")
+                    }
                 }
-            },
-            dismissButton = {
-                TextButton(onClick = { showPasswordChangeDialog = false }) {
-                    Text("Cancel")
+            )
+        }
+
+        // Password Change Dialog
+        if (showPasswordChangeDialog) {
+            AlertDialog(
+                onDismissRequest = { showPasswordChangeDialog = false },
+                title = { Text("Change Password") },
+                text = {
+                    Column {
+                        OutlinedTextField(
+                            value = currentPasswordForPwdChange,
+                            onValueChange = { currentPasswordForPwdChange = it },
+                            label = { Text("Current Password") },
+                            visualTransformation = PasswordVisualTransformation(),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = newPassword,
+                            onValueChange = { newPassword = it },
+                            label = { Text("New Password") },
+                            visualTransformation = PasswordVisualTransformation(),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = confirmNewPassword,
+                            onValueChange = { confirmNewPassword = it },
+                            label = { Text("Confirm New Password") },
+                            visualTransformation = PasswordVisualTransformation(),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            if (newPassword == confirmNewPassword) {
+                                viewModel.changePassword(currentPasswordForPwdChange, newPassword)
+                                showPasswordChangeDialog = false
+                                currentPasswordForPwdChange = ""
+                                newPassword = ""
+                                confirmNewPassword = ""
+                            } else {
+                                // Local error check could be added here
+                            }
+                        }
+                    ) {
+                        Text("Change")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showPasswordChangeDialog = false }) {
+                        Text("Cancel")
+                    }
                 }
-            }
-        )
-    }
-}}
+            )
+        }
+    }}

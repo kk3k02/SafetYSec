@@ -64,9 +64,9 @@ fun ProtectedHistoryScreen(vm: AppViewModel) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(
-                        imageVector = Icons.Default.History, 
-                        contentDescription = null, 
-                        modifier = Modifier.size(64.dp), 
+                        imageVector = Icons.Default.History,
+                        contentDescription = null,
+                        modifier = Modifier.size(64.dp),
                         tint = Color.LightGray
                     )
                     Spacer(Modifier.height(8.dp))
@@ -81,7 +81,7 @@ fun ProtectedHistoryScreen(vm: AppViewModel) {
                 item { Spacer(Modifier.height(8.dp)) }
                 items(st.myAlerts) { alert ->
                     AlertHistoryItem(
-                        alert = alert, 
+                        alert = alert,
                         sdf = sdf,
                         onClick = { if (!alert.videoUrl.isNullOrBlank()) selectedAlertForVideo = alert }
                     )
@@ -105,7 +105,7 @@ fun ProtectedHistoryScreen(vm: AppViewModel) {
 fun AlertHistoryItem(alert: Alert, sdf: SimpleDateFormat, onClick: () -> Unit) {
     val isCancelled = alert.status == "CANCELLED"
     val hasVideo = !alert.videoUrl.isNullOrBlank()
-    
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -126,15 +126,15 @@ fun AlertHistoryItem(alert: Alert, sdf: SimpleDateFormat, onClick: () -> Unit) {
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Warning, 
-                        contentDescription = null, 
+                        imageVector = Icons.Default.Warning,
+                        contentDescription = null,
                         tint = if (isCancelled) Color.Gray else Color.Red,
                         modifier = Modifier.size(24.dp)
                     )
                 }
-                
+
                 Spacer(Modifier.width(12.dp))
-                
+
                 Column(Modifier.weight(1f)) {
                     Text(
                         text = "${alert.type.displayName()} ALERT",
@@ -148,11 +148,11 @@ fun AlertHistoryItem(alert: Alert, sdf: SimpleDateFormat, onClick: () -> Unit) {
                         color = if (isCancelled) Color.Gray else Color(0xFFD32F2F)
                     )
                 }
-                
+
                 if (hasVideo) {
                     Icon(
-                        Icons.Default.PlayCircle, 
-                        contentDescription = "Has Video", 
+                        Icons.Default.PlayCircle,
+                        contentDescription = "Has Video",
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.padding(end = 8.dp)
                     )
@@ -164,14 +164,14 @@ fun AlertHistoryItem(alert: Alert, sdf: SimpleDateFormat, onClick: () -> Unit) {
                     color = Color.Gray
                 )
             }
-            
+
             if (alert.location != null) {
                 Spacer(Modifier.height(12.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
-                        imageVector = Icons.Default.Place, 
-                        contentDescription = null, 
-                        modifier = Modifier.size(14.dp), 
+                        imageVector = Icons.Default.Place,
+                        contentDescription = null,
+                        modifier = Modifier.size(14.dp),
                         tint = Color.Gray
                     )
                     Spacer(Modifier.width(4.dp))
@@ -307,14 +307,14 @@ fun ProtectedWindowsScreen(vm: AppViewModel) {
 
     if (showAdditionSuccessDialog) {
         AlertDialog(
-            onDismissRequest = { 
+            onDismissRequest = {
                 showAdditionSuccessDialog = false
                 vm.consumeAdditionSuccess()
             },
             title = { Text("Window Added") },
             text = { Text("The protection time window has been successfully saved.") },
             confirmButton = {
-                TextButton(onClick = { 
+                TextButton(onClick = {
                     showAdditionSuccessDialog = false
                     vm.consumeAdditionSuccess()
                 }) { Text("OK") }
@@ -324,14 +324,14 @@ fun ProtectedWindowsScreen(vm: AppViewModel) {
 
     if (showRemovalSuccessDialog) {
         AlertDialog(
-            onDismissRequest = { 
+            onDismissRequest = {
                 showRemovalSuccessDialog = false
                 vm.consumeRemovalSuccess()
             },
             title = { Text("Window Removed") },
             text = { Text("The protection time window has been successfully deleted.") },
             confirmButton = {
-                TextButton(onClick = { 
+                TextButton(onClick = {
                     showRemovalSuccessDialog = false
                     vm.consumeRemovalSuccess()
                 }) { Text("OK") }
@@ -364,7 +364,7 @@ fun TimeWindowCard(window: TimeWindow, onRemove: () -> Unit) {
 fun AddTimeWindowDialog(onDismiss: () -> Unit, onSave: (List<Int>, Int, Int) -> Unit) {
     var selectedDays by remember { mutableStateOf(setOf<Int>()) }
     var timeRange by remember { mutableStateOf(8f..17f) }
-    
+
     val dayNames = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 
     AlertDialog(
@@ -374,13 +374,13 @@ fun AddTimeWindowDialog(onDismiss: () -> Unit, onSave: (List<Int>, Int, Int) -> 
             Column(Modifier.fillMaxWidth()) {
                 Text("Select Days:", style = MaterialTheme.typography.labelLarge)
                 Spacer(Modifier.height(8.dp))
-                
+
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         (1..4).forEach { day ->
                             FilterChip(
                                 selected = selectedDays.contains(day),
-                                onClick = { 
+                                onClick = {
                                     selectedDays = if (selectedDays.contains(day)) selectedDays - day else selectedDays + day
                                 },
                                 label = { Text(dayNames[day-1]) }
@@ -391,7 +391,7 @@ fun AddTimeWindowDialog(onDismiss: () -> Unit, onSave: (List<Int>, Int, Int) -> 
                         (5..7).forEach { day ->
                             FilterChip(
                                 selected = selectedDays.contains(day),
-                                onClick = { 
+                                onClick = {
                                     selectedDays = if (selectedDays.contains(day)) selectedDays - day else selectedDays + day
                                 },
                                 label = { Text(dayNames[day-1]) }
@@ -497,7 +497,7 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
                         }
                         HorizontalDivider(Modifier.padding(vertical = 12.dp))
                         Text("Grant Permissions:", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
-                        
+
                         RuleType.values().forEach { type ->
                             Row(
                                 Modifier.fillMaxWidth(),
@@ -513,9 +513,9 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
                         }
                         Spacer(Modifier.height(8.dp))
                         Button(
-                            onClick = { 
+                            onClick = {
                                 vm.saveAuthorizations(monitor.uid, authorized.toList(), null)
-                                showUpdateSuccessDialog = true 
+                                showUpdateSuccessDialog = true
                             },
                             modifier = Modifier.fillMaxWidth()
                         ) { Text("Save Permissions") }
@@ -565,14 +565,14 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
 
     if (showRemovalSuccessDialog) {
         AlertDialog(
-            onDismissRequest = { 
+            onDismissRequest = {
                 showRemovalSuccessDialog = false
                 vm.consumeRemovalSuccess()
             },
             title = { Text("Monitor Removed") },
             text = { Text("The monitor has been successfully unlinked from your account.") },
             confirmButton = {
-                TextButton(onClick = { 
+                TextButton(onClick = {
                     showRemovalSuccessDialog = false
                     vm.consumeRemovalSuccess()
                 }) {
@@ -596,9 +596,9 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
                 }
             },
             confirmButton = {
-                Button(onClick = { 
+                Button(onClick = {
                     vm.saveAuthorizations(monitor.uid, requestedTypes, null)
-                    pendingRequestMonitor = null 
+                    pendingRequestMonitor = null
                 }) { Text("Accept All") }
             },
             dismissButton = {
@@ -624,7 +624,7 @@ fun ProtectedProfileScreen(
     var showSecurityPopup by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) { authVm.loadAccountInfo() }
-    
+
     LaunchedEffect(st.isSecurityUpdateSuccessful) {
         if (st.isSecurityUpdateSuccessful) {
             showSecurityPopup = true
@@ -642,18 +642,18 @@ fun ProtectedProfileScreen(
         Spacer(Modifier.height(24.dp))
         Text("Security Settings", style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(8.dp))
-        
+
         OutlinedTextField(
-            value = pin, 
+            value = pin,
             onValueChange = { pin = it },
-            label = { Text("Alert cancel PIN") }, 
-            visualTransformation = PasswordVisualTransformation(), 
-            modifier = Modifier.fillMaxWidth(), 
+            label = { Text("Alert cancel PIN") },
+            visualTransformation = PasswordVisualTransformation(),
+            modifier = Modifier.fillMaxWidth(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
         )
         Spacer(Modifier.height(12.dp))
         Button(onClick = { vm.updateCancelPin(pin) }, modifier = Modifier.fillMaxWidth()) { Text("Update PIN") }
-        
+
         Spacer(Modifier.height(16.dp))
         OutlinedTextField(
             value = inactivityMin,
@@ -674,7 +674,7 @@ fun ProtectedProfileScreen(
 
         Spacer(Modifier.height(24.dp))
         Button(onClick = onSwitchToMonitor, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)) { Text("Switch to Monitor Mode") }
-        
+
         authSt.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp)) }
         authSt.message?.let { Text(it, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 8.dp)) }
         st.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp)) }
@@ -682,14 +682,14 @@ fun ProtectedProfileScreen(
 
     if (showSecurityPopup) {
         AlertDialog(
-            onDismissRequest = { 
+            onDismissRequest = {
                 showSecurityPopup = false
                 vm.consumeSecurityUpdateSuccess()
             },
             title = { Text("Settings Saved") },
             text = { Text("Your security settings (PIN and inactivity duration) have been successfully updated.") },
             confirmButton = {
-                TextButton(onClick = { 
+                TextButton(onClick = {
                     showSecurityPopup = false
                     vm.consumeSecurityUpdateSuccess()
                 }) {
@@ -748,7 +748,7 @@ fun ProtectedCancelAlertDialog(vm: AppViewModel) {
                     Spacer(Modifier.height(16.dp))
                     Text("Enter PIN to cancel:", style = MaterialTheme.typography.bodyMedium)
                     Spacer(Modifier.height(8.dp))
-                    
+
                     // PIN input with error state
                     OutlinedTextField(
                         value = typed,
@@ -760,7 +760,7 @@ fun ProtectedCancelAlertDialog(vm: AppViewModel) {
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                     )
-                    
+
                     // Display PIN error message if present
                     st.cancelPinError?.let { errorMsg ->
                         Text(

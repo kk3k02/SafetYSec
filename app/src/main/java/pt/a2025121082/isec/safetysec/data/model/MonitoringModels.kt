@@ -13,6 +13,7 @@ enum class RuleType {
     ACCIDENT,
     GEOFENCE,
     SPEED,
+    PROLONGED_INACTIVITY,
     INACTIVITY,
     PANIC;
 
@@ -21,6 +22,7 @@ enum class RuleType {
         ACCIDENT -> "Accident"
         GEOFENCE -> "Geofencing"
         SPEED -> "Speed"
+        PROLONGED_INACTIVITY -> "Prolonged inactivity"
         INACTIVITY -> "Inactivity"
         PANIC -> "Panic"
     }

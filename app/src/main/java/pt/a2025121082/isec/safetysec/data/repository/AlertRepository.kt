@@ -47,7 +47,7 @@ class AlertRepository @Inject constructor(
             location = locationProvider(),
             status = "SENT"
         )
-        
+
         // 1. Zapis u Protected (Źródło prawdy)
         saveAlertToProtected(user.uid, sentAlert)
 
@@ -81,10 +81,10 @@ class AlertRepository @Inject constructor(
             val videoUrl = storageRef.downloadUrl.await().toString()
 
             val updates = mapOf("videoUrl" to videoUrl)
-            
+
             // Aktualizacja u Protected
             firestore.collection("users").document(user.uid).collection("my_alerts").document(alertId).update(updates).await()
-            
+
             // Aktualizacja u wszystkich Monitorów (natychmiastowe odświeżenie wideo)
             val freshUserSnap = firestore.collection("users").document(user.uid).get().await()
             val monitorIds = (freshUserSnap.get("monitors") as? List<*>)

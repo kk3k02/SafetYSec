@@ -76,7 +76,7 @@ class AppViewModel @Inject constructor(
     private var inactivityJob: Job? = null
     private var recordingTimerJob: Job? = null
     private var recording: Recording? = null
-    
+
     private var profileListener: ListenerRegistration? = null
     private var myAlertsListener: ListenerRegistration? = null
     private var monitorPopupListener: ListenerRegistration? = null
@@ -128,7 +128,7 @@ class AppViewModel @Inject constructor(
                     handleRecordingFinalized(alertId, uri)
                 }
             }
-        
+
         recordingTimerJob?.cancel()
         recordingTimerJob = viewModelScope.launch {
             while (state.recordingSecondsLeft > 0) {
@@ -160,22 +160,22 @@ class AppViewModel @Inject constructor(
     private fun triggerAlertWithTimer(type: RuleType) = viewModelScope.launch {
         val me = state.me ?: return@launch
         if (state.isCancelWindowOpen || state.isRecordingPopupOpen) return@launch
-        
+
         state = state.copy(isCancelWindowOpen = true, cancelSecondsLeft = 10, typedCancelCode = null, cancelPinError = null, isAlertSent = false)
         val tickerJob = viewModelScope.launch {
             while (state.cancelSecondsLeft > 0) { delay(1000); state = state.copy(cancelSecondsLeft = state.cancelSecondsLeft - 1) }
         }
-        
+
         val alertId = alertRepo.triggerAlert(
-            ruleType = type, 
-            user = me, 
-            cancelCodeProvider = { state.typedCancelCode }, 
+            ruleType = type,
+            user = me,
+            cancelCodeProvider = { state.typedCancelCode },
             locationProvider = { locationProvider?.invoke() }
         )
         tickerJob.cancel()
-        
+
         state = state.copy(isCancelWindowOpen = false, cancelSecondsLeft = 0)
-        
+
         if (alertId != null) {
             currentAlertIdForRecording = alertId
             state = state.copy(isAlertSent = true, recordingSecondsLeft = 30, isRecordingPopupOpen = true)
@@ -204,7 +204,7 @@ class AppViewModel @Inject constructor(
 
         // Get protected users for this monitor
         val pIds = state.me?.protectedUsers ?: emptyList()
-        
+
         // Remove listeners for users that are no longer linked
         val currentKeys = protectedAlertsListeners.keys.toSet()
         val toRemove = currentKeys - pIds.toSet()
@@ -224,7 +224,7 @@ class AppViewModel @Inject constructor(
                     }
             }
         }
-        
+
         // Update monitorAlerts in case pIds changed
         state = state.copy(monitorAlerts = alertsMap.values.flatten().sortedByDescending { it.timestamp })
 
@@ -253,15 +253,15 @@ class AppViewModel @Inject constructor(
                 if (me != null) {
                     val wasMonitor = state.me?.roles?.contains("Monitor") == true
                     val isMonitor = me.roles.contains("Monitor")
-                    
+
                     state = state.copy(me = me, isLoading = false)
-                    
+
                     if (me.roles.contains("Protected")) {
                         startMyAlertsListener(me.uid)
                         viewModelScope.launch { refreshProtectedMetadata(me.uid) }
                         startInactivityTimer()
                     }
-                    
+
                     if (isMonitor) {
                         startMonitoringDashboard(me.uid)
                     } else if (wasMonitor) {
@@ -296,8 +296,8 @@ class AppViewModel @Inject constructor(
             val windows = monitoringRepo.listTimeWindows(uid)
             val me = authRepo.getUserProfile(uid)
             state = state.copy(
-                monitorRuleBundles = bundles, 
-                timeWindows = windows, 
+                monitorRuleBundles = bundles,
+                timeWindows = windows,
                 myLinkedMonitors = me.monitors.map { authRepo.getUserProfile(it) },
                 inactivityAuthorized = bundles.any { it.authorizedTypes.contains(RuleType.INACTIVITY) },
                 inactivityDurationMin = me.inactivityDurationMin
@@ -341,7 +341,7 @@ class AppViewModel @Inject constructor(
     fun addTimeWindow(d: List<Int>, s: Int, e: Int) = viewModelScope.launch { try { monitoringRepo.addTimeWindow(state.me!!.uid, TimeWindow(daysOfWeek = d, startHour = s, endHour = e)); state = state.copy(isAdditionSuccessful = true) } catch (e: Exception) {} }
     fun removeTimeWindow(id: String) = viewModelScope.launch { try { monitoringRepo.deleteTimeWindow(state.me!!.uid, id); state = state.copy(isRemovalSuccessful = true) } catch (e: Exception) {} }
     fun toggleFallDetection(ctx: Context) { val n = !state.isFallDetectionEnabled; val i = android.content.Intent(ctx, FallDetectionService::class.java); if (n) { if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) ctx.startForegroundService(i) else ctx.startService(i) } else ctx.stopService(i); state = state.copy(isFallDetectionEnabled = n) }
-    
+
     fun dismissRecordingPopup() {
         state = state.copy(isRecordingPopupOpen = false)
         stopVideoRecording()
