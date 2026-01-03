@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -24,6 +25,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
@@ -619,9 +621,13 @@ fun ProtectedProfileScreen(
 ) {
     val st = vm.state
     val authSt = authVm.uiState
-    var pin by remember { mutableStateOf("") }
     var inactivityMin by remember(st.inactivityDurationMin) { mutableStateOf(st.inactivityDurationMin.toString()) }
     var showSecurityPopup by remember { mutableStateOf(false) }
+    var securityPopupMessage by remember { mutableStateOf("Your security settings (PIN and inactivity duration) have been successfully updated.") }
+    var showPinDialog by remember { mutableStateOf(false) }
+    var oldPin by remember { mutableStateOf("") }
+    var newPin by remember { mutableStateOf("") }
+    var pinError by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) { authVm.loadAccountInfo() }
 
@@ -643,17 +649,16 @@ fun ProtectedProfileScreen(
         Text("Security Settings", style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(8.dp))
 
-        OutlinedTextField(
-            value = pin,
-            onValueChange = { pin = it },
-            label = { Text("Alert cancel PIN") },
-            visualTransformation = PasswordVisualTransformation(),
-            modifier = Modifier.fillMaxWidth(),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-        )
-        Spacer(Modifier.height(12.dp))
-        Button(onClick = { vm.updateCancelPin(pin) }, modifier = Modifier.fillMaxWidth()) { Text("Update PIN") }
-
+        Button(
+            onClick = {
+                oldPin = ""
+                newPin = ""
+                pinError = null
+                showPinDialog = true
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) { Text("Change PIN") }
+        
         Spacer(Modifier.height(16.dp))
         OutlinedTextField(
             value = inactivityMin,
@@ -665,7 +670,10 @@ fun ProtectedProfileScreen(
         )
         Spacer(Modifier.height(12.dp))
         Button(
-            onClick = { vm.updateInactivityDuration(inactivityMin) },
+            onClick = {
+                securityPopupMessage = "Your inactivity settings have been updated."
+                vm.updateInactivityDuration(inactivityMin)
+            },
             modifier = Modifier.fillMaxWidth(),
             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
         ) {
@@ -680,16 +688,108 @@ fun ProtectedProfileScreen(
         st.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp)) }
     }
 
+    if (showPinDialog) {
+        AlertDialog(
+            onDismissRequest = { showPinDialog = false },
+            title = { Text("Change PIN") },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = oldPin,
+                        onValueChange = { input ->
+                            val digitsOnly = input.filter { it.isDigit() }
+                            oldPin = digitsOnly.take(4)
+                            pinError = null
+                        },
+                        label = { Text("Current PIN") },
+                        placeholder = { Text("4 digits") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        modifier = Modifier.fillMaxWidth(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        isError = pinError != null
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = newPin,
+                        onValueChange = { input ->
+                            val digitsOnly = input.filter { it.isDigit() }
+                            newPin = digitsOnly.take(4)
+                            pinError = when {
+                                newPin.length == 4 && newPin == st.me?.alertCancelCode.orEmpty() ->
+                                    "Please enter a different PIN."
+                                newPin.length == 4 && oldPin.length == 4 && oldPin != st.me?.alertCancelCode.orEmpty() ->
+                                    "Current PIN is incorrect."
+                                else -> null
+                            }
+                        },
+                        label = { Text("New PIN") },
+                        placeholder = { Text("4 digits") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        modifier = Modifier.fillMaxWidth(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(
+                            onDone = {
+                                val currentPin = st.me?.alertCancelCode.orEmpty()
+                                when {
+                                    oldPin.length < 4 -> pinError = "Current PIN must be 4 digits."
+                                    oldPin != currentPin -> pinError = "Current PIN is incorrect."
+                                    newPin.length < 4 -> pinError = "New PIN must be 4 digits."
+                                    newPin == currentPin -> pinError = "Please enter a different PIN."
+                                    else -> {
+                                        securityPopupMessage = "Your PIN has been updated successfully."
+                                        vm.updateCancelPin(newPin)
+                                        showPinDialog = false
+                                    }
+                                }
+                            }
+                        ),
+                        isError = pinError != null
+                    )
+                    pinError?.let { error ->
+                        Text(
+                            text = error,
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                val currentPin = st.me?.alertCancelCode.orEmpty()
+                val canSave = oldPin.length == 4 && newPin.length == 4
+                TextButton(onClick = {
+                    when {
+                        oldPin.length < 4 -> pinError = "Current PIN must be 4 digits."
+                        oldPin != currentPin -> pinError = "Current PIN is incorrect."
+                        newPin.length < 4 -> pinError = "New PIN must be 4 digits."
+                        newPin == currentPin -> pinError = "Please enter a different PIN."
+                        else -> {
+                            securityPopupMessage = "Your PIN has been updated successfully."
+                            vm.updateCancelPin(newPin)
+                            showPinDialog = false
+                        }
+                    }
+                }, enabled = canSave) {
+                    Text("Save")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPinDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
+
     if (showSecurityPopup) {
         AlertDialog(
-            onDismissRequest = {
+            onDismissRequest = { 
                 showSecurityPopup = false
                 vm.consumeSecurityUpdateSuccess()
             },
             title = { Text("Settings Saved") },
-            text = { Text("Your security settings (PIN and inactivity duration) have been successfully updated.") },
+            text = { Text(securityPopupMessage) },
             confirmButton = {
-                TextButton(onClick = {
+                TextButton(onClick = { 
                     showSecurityPopup = false
                     vm.consumeSecurityUpdateSuccess()
                 }) {

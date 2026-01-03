@@ -28,15 +28,18 @@ class MonitoringRepository @Inject constructor(
             .collection("rulesByMonitor").get().await()
 
         return qs.documents.map { d ->
-            val requested = (d.get("requested") as? List<*>)?.mapNotNull { it as? Map<*, *> }?.map {
-                val typeStr = it["type"] as? String ?: "PANIC"
-                val paramsMap = it["params"] as? Map<*, *>
-                val params = RuleParams(
-                    maxSpeed = (paramsMap?.get("maxSpeed") as? Number)?.toFloat(),
-                    inactivityDurationMin = (paramsMap?.get("inactivityDurationMin") as? Number)?.toInt()
-                )
-                MonitoringRule(type = RuleType.valueOf(typeStr), params = params)
-            } ?: emptyList()
+            val requested = (d.get("requested") as? List<*>)
+                ?.mapNotNull { it as? Map<*, *> }
+                ?.mapNotNull {
+                    val typeStr = it["type"] as? String ?: return@mapNotNull null
+                    val type = runCatching { RuleType.valueOf(typeStr) }.getOrNull() ?: return@mapNotNull null
+                    val paramsMap = it["params"] as? Map<*, *>
+                    val params = RuleParams(
+                        maxSpeed = (paramsMap?.get("maxSpeed") as? Number)?.toFloat(),
+                        inactivityDurationMin = (paramsMap?.get("inactivityDurationMin") as? Number)?.toInt()
+                    )
+                    MonitoringRule(type = type, params = params)
+                } ?: emptyList()
 
             MonitorRulesBundle(
                 monitorId = d.id,
