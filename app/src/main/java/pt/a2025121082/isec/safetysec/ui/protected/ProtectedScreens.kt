@@ -375,7 +375,7 @@ fun TimeWindowCard(window: TimeWindow, onRemove: () -> Unit) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddTimeWindowDialog(onDismiss: () -> Unit, onSave: (List<Int>, Int, Int) -> Unit) {
-    var selectedDays by remember { mutableStateOf(setOf<Int>()) }
+    var selectedDay by remember { mutableStateOf<Int?>(null) }
     var timeRange by remember { mutableStateOf(8f..17f) }
 
     val dayNames = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
@@ -392,9 +392,9 @@ fun AddTimeWindowDialog(onDismiss: () -> Unit, onSave: (List<Int>, Int, Int) -> 
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         (1..4).forEach { day ->
                             FilterChip(
-                                selected = selectedDays.contains(day),
+                                selected = selectedDay == day,
                                 onClick = {
-                                    selectedDays = if (selectedDays.contains(day)) selectedDays - day else selectedDays + day
+                                    selectedDay = if (selectedDay == day) null else day
                                 },
                                 label = { Text(dayNames[day-1]) }
                             )
@@ -403,9 +403,9 @@ fun AddTimeWindowDialog(onDismiss: () -> Unit, onSave: (List<Int>, Int, Int) -> 
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         (5..7).forEach { day ->
                             FilterChip(
-                                selected = selectedDays.contains(day),
+                                selected = selectedDay == day,
                                 onClick = {
-                                    selectedDays = if (selectedDays.contains(day)) selectedDays - day else selectedDays + day
+                                    selectedDay = if (selectedDay == day) null else day
                                 },
                                 label = { Text(dayNames[day-1]) }
                             )
@@ -428,8 +428,11 @@ fun AddTimeWindowDialog(onDismiss: () -> Unit, onSave: (List<Int>, Int, Int) -> 
         },
         confirmButton = {
             Button(
-                onClick = { onSave(selectedDays.toList(), timeRange.start.toInt(), timeRange.endInclusive.toInt()) },
-                enabled = selectedDays.isNotEmpty() && timeRange.start < timeRange.endInclusive
+                onClick = {
+                    val day = selectedDay ?: return@Button
+                    onSave(listOf(day), timeRange.start.toInt(), timeRange.endInclusive.toInt())
+                },
+                enabled = selectedDay != null && timeRange.start < timeRange.endInclusive
             ) { Text("Save Window") }
         },
         dismissButton = {

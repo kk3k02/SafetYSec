@@ -690,8 +690,20 @@ class AppViewModel @Inject constructor(
             refreshProtectedMetadata(state.me!!.uid)
         } catch (e: Exception) {}
     }
-    fun addTimeWindow(d: List<Int>, s: Int, e: Int) = viewModelScope.launch { try { monitoringRepo.addTimeWindow(state.me!!.uid, TimeWindow(daysOfWeek = d, startHour = s, endHour = e)); state = state.copy(isAdditionSuccessful = true) } catch (e: Exception) {} }
-    fun removeTimeWindow(id: String) = viewModelScope.launch { try { monitoringRepo.deleteTimeWindow(state.me!!.uid, id); state = state.copy(isRemovalSuccessful = true) } catch (e: Exception) {} }
+    fun addTimeWindow(d: List<Int>, s: Int, e: Int) = viewModelScope.launch {
+        try {
+            monitoringRepo.addTimeWindow(state.me!!.uid, TimeWindow(daysOfWeek = d, startHour = s, endHour = e))
+            val windows = monitoringRepo.listTimeWindows(state.me!!.uid)
+            state = state.copy(timeWindows = windows, isAdditionSuccessful = true)
+        } catch (e: Exception) { }
+    }
+    fun removeTimeWindow(id: String) = viewModelScope.launch {
+        try {
+            monitoringRepo.deleteTimeWindow(state.me!!.uid, id)
+            val windows = monitoringRepo.listTimeWindows(state.me!!.uid)
+            state = state.copy(timeWindows = windows, isRemovalSuccessful = true)
+        } catch (e: Exception) { }
+    }
     fun setFallDetectionEnabled(enabled: Boolean) {
         val me = state.me ?: return
         if (!me.roles.contains("Protected")) return
