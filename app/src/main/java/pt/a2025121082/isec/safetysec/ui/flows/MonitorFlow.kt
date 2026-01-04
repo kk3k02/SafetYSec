@@ -9,6 +9,7 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -33,6 +34,8 @@ fun MonitorFlow(
     val nav = rememberNavController()
     val entry by nav.currentBackStackEntryAsState()
     val currentRoute = entry?.destination?.route
+
+    LaunchedEffect(Unit) { appViewModel.setActiveMode(pt.a2025121082.isec.safetysec.viewmodel.AppMode.MONITOR) }
 
     Scaffold(
         topBar = {

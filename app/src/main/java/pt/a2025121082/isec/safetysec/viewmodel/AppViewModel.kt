@@ -58,8 +58,11 @@ data class AppUiState(
     val inactivityDurationMin: Int = 0,
     val isSecurityUpdateSuccessful: Boolean = false,
     val isRecordingPopupOpen: Boolean = false,
-    val recordingSecondsLeft: Int = 0
+    val recordingSecondsLeft: Int = 0,
+    val activeMode: AppMode = AppMode.PROTECTED
 )
+
+enum class AppMode { PROTECTED, MONITOR }
 
 @HiltViewModel
 class AppViewModel @Inject constructor(
@@ -160,6 +163,7 @@ class AppViewModel @Inject constructor(
 
     private fun triggerAlertWithTimer(type: RuleType) = viewModelScope.launch {
         val me = state.me ?: return@launch
+        if (!me.roles.contains("Protected") || state.activeMode != AppMode.PROTECTED) return@launch
         if (state.isCancelWindowOpen || state.isRecordingPopupOpen) return@launch
 
         state = state.copy(isCancelWindowOpen = true, cancelSecondsLeft = 10, typedCancelCode = null, cancelPinError = null, isAlertSent = false)
@@ -409,7 +413,16 @@ class AppViewModel @Inject constructor(
     }
     fun addTimeWindow(d: List<Int>, s: Int, e: Int) = viewModelScope.launch { try { monitoringRepo.addTimeWindow(state.me!!.uid, TimeWindow(daysOfWeek = d, startHour = s, endHour = e)); state = state.copy(isAdditionSuccessful = true) } catch (e: Exception) {} }
     fun removeTimeWindow(id: String) = viewModelScope.launch { try { monitoringRepo.deleteTimeWindow(state.me!!.uid, id); state = state.copy(isRemovalSuccessful = true) } catch (e: Exception) {} }
-    fun toggleFallDetection(ctx: Context) { val n = !state.isFallDetectionEnabled; val i = android.content.Intent(ctx, FallDetectionService::class.java); if (n) { if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) ctx.startForegroundService(i) else ctx.startService(i) } else ctx.stopService(i); state = state.copy(isFallDetectionEnabled = n) }
+    fun toggleFallDetection(ctx: Context) {
+        val me = state.me ?: return
+        if (!me.roles.contains("Protected") || state.activeMode != AppMode.PROTECTED) return
+        val n = !state.isFallDetectionEnabled
+        val i = android.content.Intent(ctx, FallDetectionService::class.java)
+        if (n) {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) ctx.startForegroundService(i) else ctx.startService(i)
+        } else ctx.stopService(i)
+        state = state.copy(isFallDetectionEnabled = n)
+    }
 
     fun dismissRecordingPopup() {
         state = state.copy(isRecordingPopupOpen = false)
@@ -421,7 +434,7 @@ class AppViewModel @Inject constructor(
         inactivityJob = viewModelScope.launch {
             while (true) {
                 delay(1000)
-                if (state.inactivityAuthorized && state.inactivityDurationMin > 0) {
+                if (state.activeMode == AppMode.PROTECTED && state.inactivityAuthorized && state.inactivityDurationMin > 0) {
                     state = state.copy(userInactivitySeconds = state.userInactivitySeconds + 1)
                     if (state.userInactivitySeconds >= state.inactivityDurationMin * 60) {
                         triggerInactivityAlert()
@@ -429,6 +442,12 @@ class AppViewModel @Inject constructor(
                     }
                 } else { state = state.copy(userInactivitySeconds = 0) }
             }
+        }
+    }
+
+    fun setActiveMode(mode: AppMode) {
+        if (state.activeMode != mode) {
+            state = state.copy(activeMode = mode)
         }
     }
 
