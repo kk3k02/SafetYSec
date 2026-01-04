@@ -73,6 +73,10 @@ import pt.a2025121082.isec.safetysec.viewmodel.AuthViewModel
 import java.text.SimpleDateFormat
 import java.util.*
 
+/**
+ * The main entry point of the application.
+ * Annotated with @AndroidEntryPoint for Hilt dependency injection.
+ */
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
@@ -80,7 +84,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        enableEdgeToEdge() // Enables edge-to-edge display for a modern look
         setContent {
             SafetYSecTheme {
                 Surface(color = MaterialTheme.colorScheme.background) {
@@ -92,12 +96,18 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * Intercepts touch events to reset the inactivity timer in the ViewModel.
+     */
     override fun dispatchTouchEvent(ev: MotionEvent?): Boolean {
         appViewModel?.resetInactivityTimer()
         return super.dispatchTouchEvent(ev)
     }
 }
 
+/**
+ * Route constants used for navigation within the app.
+ */
 private object Routes {
     const val LOGIN = "login"
     const val REGISTER = "register"
@@ -108,6 +118,9 @@ private object Routes {
     const val MONITOR_FLOW = "monitor_flow"
 }
 
+/**
+ * Main application composable that handles navigation and core services like location tracking.
+ */
 @Composable
 private fun SafetYSecApp(
     navController: NavHostController = rememberNavController(),
@@ -118,24 +131,31 @@ private fun SafetYSecApp(
     val appState = appViewModel.state
     val context = LocalContext.current
     val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
+    
+    // State holders for location and speed data
     val lastSpeedKmh = remember { mutableStateOf<Float?>(null) }
     val lastGeoPoint = remember { mutableStateOf<GeoPoint?>(null) }
     val lastLocation = remember { mutableStateOf<Location?>(null) }
 
+    // Permissions required by the app
     val permissionsToRequest = arrayOf(
         Manifest.permission.CAMERA,
         Manifest.permission.RECORD_AUDIO,
         Manifest.permission.ACCESS_FINE_LOCATION,
         Manifest.permission.ACCESS_COARSE_LOCATION
     )
+    
+    // Check if permissions are already granted
     var permissionsGranted by remember {
         mutableStateOf(permissionsToRequest.all { ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED })
     }
 
+    // Launcher for requesting multiple permissions
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { results ->
         permissionsGranted = results.values.all { it }
     }
 
+    // Launcher for handling GPS settings resolution
     val gpsLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartIntentSenderForResult()
     ) { result ->
@@ -144,6 +164,9 @@ private fun SafetYSecApp(
         }
     }
 
+    /**
+     * Checks if GPS is enabled and prompts the user to enable it if necessary.
+     */
     fun checkGpsSettings() {
         val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 5000).build()
         val builder = LocationSettingsRequest.Builder()
@@ -164,18 +187,21 @@ private fun SafetYSecApp(
             }
     }
 
+    // Initial setup: request permissions and refresh auth state
     LaunchedEffect(Unit) {
         if (!permissionsGranted) launcher.launch(permissionsToRequest)
-        authViewModel.logout()
+        authViewModel.logout() // Optional: logout on start or based on logic
         authViewModel.refreshAuthState()
     }
 
+    // Check GPS settings once permissions are granted
     LaunchedEffect(permissionsGranted) {
         if (permissionsGranted) {
             checkGpsSettings()
         }
     }
 
+    // Handle continuous location updates when permissions are available
     DisposableEffect(permissionsGranted) {
         if (!permissionsGranted) return@DisposableEffect onDispose { }
         val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 2000).build()
@@ -183,6 +209,8 @@ private fun SafetYSecApp(
             override fun onLocationResult(result: LocationResult) {
                 val location = result.lastLocation ?: return
                 lastGeoPoint.value = GeoPoint(location.latitude, location.longitude)
+                
+                // Calculate speed either from sensor or manually from distance/time
                 val speedFromSensor = location.speed.takeIf { it >= 0f }?.let { it * 3.6f }
                 val prev = lastLocation.value
                 val speedFromDistance = if (prev != null) {
@@ -193,6 +221,7 @@ private fun SafetYSecApp(
                         if (dist >= 0f) ((dist / deltaSec) * 3.6).toFloat() else null
                     } else null
                 } else null
+                
                 lastSpeedKmh.value = speedFromSensor ?: speedFromDistance
                 lastLocation.value = location
                 Log.d(
@@ -205,7 +234,9 @@ private fun SafetYSecApp(
         onDispose { fusedLocationClient.removeLocationUpdates(callback) }
     }
 
-    // Function to get current location
+    /**
+     * Helper function to fetch the current location.
+     */
     @SuppressLint("MissingPermission")
     suspend fun getCurrentLocation(): GeoPoint? {
         return try {
@@ -219,12 +250,13 @@ private fun SafetYSecApp(
         }
     }
 
-    // Pass location provider to ViewModel
+    // Provide location and speed data to the AppViewModel
     LaunchedEffect(Unit) {
         appViewModel.setLocationProvider { getCurrentLocation() }
         appViewModel.setSpeedProvider { lastSpeedKmh.value }
     }
 
+    // Handle profile loading and dashboard startup based on user role
     LaunchedEffect(authState.isAuthenticated, appState.me?.uid) {
         if (authState.isAuthenticated) {
             val me = appState.me
@@ -240,12 +272,14 @@ private fun SafetYSecApp(
         }
     }
 
+    // Logic for automatic navigation based on authentication status and user roles
     LaunchedEffect(authState.isAuthenticated, appState.me?.uid) {
         if (!authState.isAuthenticated) return@LaunchedEffect
         val me = appState.me ?: return@LaunchedEffect
         val currentEntry = navController.currentBackStackEntry
         val currentRoute = currentEntry?.destination?.route
 
+        // Don't navigate away if already in a main flow or profile
         if (currentRoute in setOf(Routes.PROTECTED_FLOW, Routes.MONITOR_FLOW, Routes.PROFILE)) return@LaunchedEffect
 
         val target = when {
@@ -261,6 +295,7 @@ private fun SafetYSecApp(
         }
     }
 
+    // Main UI structure with NavHost and global overlays (Popups)
     Box(modifier = Modifier.fillMaxSize()) {
         NavHost(
             navController = navController,
@@ -319,6 +354,7 @@ private fun SafetYSecApp(
             }
         }
 
+        // Global popup for incoming alerts (for Monitors)
         appState.pendingAlerts.firstOrNull()?.let { alert ->
             MonitorGlobalAlertPopup(
                 alert = alert,
@@ -326,6 +362,7 @@ private fun SafetYSecApp(
             )
         }
 
+        // Global popup for emergency recording (for Protected users)
         if (appState.isRecordingPopupOpen) {
             EmergencyRecordingPopup(
                 appViewModel = appViewModel,
@@ -336,10 +373,15 @@ private fun SafetYSecApp(
     }
 }
 
+/**
+ * A popup dialog that handles camera preview and video recording during an emergency.
+ */
 @Composable
 fun EmergencyRecordingPopup(appViewModel: AppViewModel, secondsLeft: Int, onDismiss: () -> Unit) {
     val context = LocalContext.current
     val previewView = remember { PreviewView(context) }
+    
+    // Animation for the "REC" dot
     val infiniteTransition = rememberInfiniteTransition(label = "rec")
     val recAlpha by infiniteTransition.animateFloat(
         initialValue = 1f,
@@ -351,7 +393,7 @@ fun EmergencyRecordingPopup(appViewModel: AppViewModel, secondsLeft: Int, onDism
         label = "recAlpha"
     )
 
-    // BINDUJEMY TYLKO TUTAJ - RAZ - Preview i VideoCapture razem
+    // Bind CameraX preview and video capture use cases
     LaunchedEffect(Unit) {
         val cameraProviderProvider = ProcessCameraProvider.getInstance(context)
         cameraProviderProvider.addListener({
@@ -362,14 +404,13 @@ fun EmergencyRecordingPopup(appViewModel: AppViewModel, secondsLeft: Int, onDism
             val cameraSelector = CameraSelector.DEFAULT_FRONT_CAMERA
             try {
                 cameraProvider.unbindAll()
-                // BINDUJEMY oba use-case'y w jednym kroku
                 cameraProvider.bindToLifecycle(
                     ProcessLifecycleOwner.get(),
                     cameraSelector,
                     preview,
                     appViewModel.videoCapture
                 )
-                // Gdy hardware jest zbindowany, odpalamy zapis w ViewModelu
+                // Start the actual video recording in the ViewModel
                 appViewModel.startActualRecording()
             } catch (e: Exception) {
                 Log.e("RecordingPopup", "Binding failed", e)
@@ -388,12 +429,15 @@ fun EmergencyRecordingPopup(appViewModel: AppViewModel, secondsLeft: Int, onDism
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
             ) {
                 Column(modifier = Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    // Alert Header with blinking REC dot
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth()) {
                         Box(modifier = Modifier.size(12.dp).background(Color.Red.copy(alpha = recAlpha), CircleShape))
                         Spacer(Modifier.width(8.dp))
                         Text("ALERT SENT & RECORDING", style = MaterialTheme.typography.titleMedium, color = Color.Red, fontWeight = FontWeight.Black)
                     }
                     Spacer(modifier = Modifier.height(16.dp))
+                    
+                    // Camera Preview Area
                     Box(modifier = Modifier.fillMaxWidth().height(350.dp).clip(RoundedCornerShape(16.dp)).background(Color.DarkGray)) {
                         AndroidView(factory = { previewView }, modifier = Modifier.fillMaxSize())
                         Box(modifier = Modifier.fillMaxSize().padding(12.dp), contentAlignment = Alignment.TopEnd) {
@@ -407,10 +451,15 @@ fun EmergencyRecordingPopup(appViewModel: AppViewModel, secondsLeft: Int, onDism
                         }
                     }
                     Spacer(modifier = Modifier.height(20.dp))
+                    
+                    // Countdown timer
                     val minutes = secondsLeft / 60
                     val seconds = secondsLeft % 60
                     Text(text = String.format("%02d:%02d", minutes, seconds), style = MaterialTheme.typography.displayMedium, fontWeight = FontWeight.Black, color = if (secondsLeft <= 5) Color.Red else MaterialTheme.colorScheme.onSurface)
+                    
                     Spacer(modifier = Modifier.height(24.dp))
+                    
+                    // Dismiss button or progress bar
                     if (secondsLeft == 0) {
                         Button(onClick = onDismiss, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)), modifier = Modifier.fillMaxWidth().height(56.dp), shape = RoundedCornerShape(12.dp)) {
                             Text("I AM SAFE - CLOSE", fontSize = 16.sp, fontWeight = FontWeight.Bold)
@@ -424,6 +473,10 @@ fun EmergencyRecordingPopup(appViewModel: AppViewModel, secondsLeft: Int, onDism
     }
 }
 
+/**
+ * A dialog displayed to Monitors when an emergency alert is received.
+ * Shows user details, alert type, location, and the evidence video.
+ */
 @Composable
 fun MonitorGlobalAlertPopup(alert: Alert, onDismiss: () -> Unit) {
     val sdf = remember { SimpleDateFormat("HH:mm:ss dd/MM/yyyy", Locale.getDefault()) }
@@ -435,6 +488,8 @@ fun MonitorGlobalAlertPopup(alert: Alert, onDismiss: () -> Unit) {
             Column(modifier = Modifier.fillMaxWidth()) {
                 Text(text = "User: ${alert.protectedName}", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
                 Spacer(Modifier.height(12.dp))
+                
+                // Evidence Video Player
                 if (!alert.videoUrl.isNullOrBlank()) {
                     Text("Evidence Video:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(8.dp))
@@ -443,13 +498,15 @@ fun MonitorGlobalAlertPopup(alert: Alert, onDismiss: () -> Unit) {
                     }
                     Spacer(Modifier.height(12.dp))
                 }
+                
+                // Alert Details Card
                 Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color.Red.copy(alpha = 0.1f))) {
                     Column(Modifier.padding(12.dp)) {
                         Text("Type: ${alert.type.displayName()}", fontWeight = FontWeight.Bold)
                         Text("Time: ${sdf.format(Date(alert.timestamp))}")
                         if (alert.location != null) {
                             Spacer(Modifier.height(8.dp))
-                            Text("${String.format("%.5f", alert.location.latitude)}, ${String.format("%.5f", alert.location.longitude)}")
+                            Text(String.format("%.5f, %.5f", alert.location.latitude, alert.location.longitude))
                         }
                     }
                 }
@@ -459,6 +516,9 @@ fun MonitorGlobalAlertPopup(alert: Alert, onDismiss: () -> Unit) {
     )
 }
 
+/**
+ * A simple video player using ExoPlayer to play evidence videos.
+ */
 @Composable
 fun VideoPlayer(videoUrl: String) {
     val context = LocalContext.current

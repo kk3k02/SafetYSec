@@ -36,6 +36,10 @@ import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.sqrt
 
+/**
+ * UI State for the entire application, tracking user profiles, alerts, 
+ * monitoring rules, and temporary UI flags (loading, errors, popups).
+ */
 data class AppUiState(
     val me: User? = null,
     val isLoading: Boolean = false,
@@ -72,8 +76,13 @@ data class AppUiState(
     val activeMode: AppMode = AppMode.PROTECTED
 )
 
+/** Operating modes for the app: Protected (monitored) or Monitor (supervising). */
 enum class AppMode { PROTECTED, MONITOR }
 
+/**
+ * Core ViewModel of the application. Orchestrates complex business logic, 
+ * background monitoring services, real-time Firebase listeners, and emergency flows.
+ */
 @HiltViewModel
 class AppViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -83,9 +92,11 @@ class AppViewModel @Inject constructor(
     private val db: FirebaseFirestore
 ) : ViewModel() {
 
+    /** Current UI state, observable by Compose components. */
     var state by mutableStateOf(AppUiState())
         private set
 
+    // Coroutine Jobs for various background monitors
     private var inactivityJob: Job? = null
     private var geofenceJob: Job? = null
     private var recordingTimerJob: Job? = null
@@ -97,6 +108,7 @@ class AppViewModel @Inject constructor(
     private var lastAccidentSampleAtMs: Long? = null
     private var lastAccidentAlertAt: Long = 0L
 
+    // Real-time Firebase Firestore listeners
     private var profileListener: ListenerRegistration? = null
     private var myAlertsListener: ListenerRegistration? = null
     private var rulesByMonitorListener: ListenerRegistration? = null
@@ -105,11 +117,11 @@ class AppViewModel @Inject constructor(
     private val protectedAlertsListeners = mutableMapOf<String, ListenerRegistration>()
     private val alertsMap = mutableMapOf<String, List<Alert>>()
 
-    // Location provider injected from UI (MainActivity)
+    // Functional interfaces for dynamic data injection (Location/Speed)
     private var locationProvider: (suspend () -> GeoPoint?)? = null
     private var speedProvider: (suspend () -> Float?)? = null
 
-    // SINGLE INSTANCE VideoCapture
+    /** Shared VideoCapture instance for CameraX recording. */
     val videoCapture: VideoCapture<Recorder> = VideoCapture.withOutput(
         Recorder.Builder()
             .setQualitySelector(QualitySelector.from(Quality.LOWEST))
@@ -125,12 +137,15 @@ class AppViewModel @Inject constructor(
     private var lastSpeedAlertAt: Long = 0L
 
     init {
+        // Collect detection events (e.g., fall detected) and trigger the alert UI
         viewModelScope.launch {
             alertRepo.detectionEvents.collectLatest { type ->
                 triggerAlertWithTimer(type)
             }
         }
     }
+
+    // --- Data Providers & Location ---
 
     fun setLocationProvider(provider: suspend () -> GeoPoint?) {
         this.locationProvider = provider
@@ -142,6 +157,12 @@ class AppViewModel @Inject constructor(
 
     suspend fun getCurrentLocation(): GeoPoint? = locationProvider?.invoke()
 
+    // --- Camera & Video Recording Logic ---
+
+    /**
+     * Starts the actual video recording process using CameraX.
+     * Triggered automatically after a successful alert dispatch and hardware binding.
+     */
     @SuppressLint("MissingPermission")
     fun startActualRecording() {
         if (state.activeMode != AppMode.PROTECTED) return
@@ -165,6 +186,7 @@ class AppViewModel @Inject constructor(
                 }
             }
 
+        // Manage the recording duration countdown
         recordingTimerJob?.cancel()
         recordingTimerJob = viewModelScope.launch {
             while (state.recordingSecondsLeft > 0) {
@@ -176,6 +198,7 @@ class AppViewModel @Inject constructor(
         }
     }
 
+    /** Cleanup and upload tasks after a recording finishes. */
     private fun handleRecordingFinalized(alertId: String, uri: Uri?) {
         recording = null
         currentAlertIdForRecording = null
@@ -193,6 +216,12 @@ class AppViewModel @Inject constructor(
         recordingTimerJob?.cancel()
     }
 
+    // --- Emergency Alert Flow ---
+
+    /**
+     * Orchestrates the emergency alert countdown.
+     * Shows a 10s cancellation window to the user before notifying monitors.
+     */
     private fun triggerAlertWithTimer(type: RuleType) = viewModelScope.launch {
         val me = state.me ?: return@launch
         if (!me.roles.contains("Protected") || state.activeMode != AppMode.PROTECTED) return@launch
@@ -207,10 +236,13 @@ class AppViewModel @Inject constructor(
             cancelPinError = null,
             isAlertSent = false
         )
+        
+        // Ticker for the UI countdown
         val tickerJob = viewModelScope.launch {
             while (state.cancelSecondsLeft > 0) { delay(1000); state = state.copy(cancelSecondsLeft = state.cancelSecondsLeft - 1) }
         }
 
+        // Pass control to the repository to handle PIN check and server communication
         val alertId = alertRepo.triggerAlert(
             ruleType = type,
             user = me,
@@ -221,11 +253,12 @@ class AppViewModel @Inject constructor(
 
         state = state.copy(isCancelWindowOpen = false, cancelAlertType = null, cancelSecondsLeft = 0)
 
+        // If the alert was NOT cancelled, initiate recording popup
         if (alertId != null) {
             currentAlertIdForRecording = alertId
             state = state.copy(isAlertSent = true, recordingSecondsLeft = 30, isRecordingPopupOpen = true)
         } else if (type == RuleType.SPEED) {
-            // Allow retriggering if user cancels while still over limit
+            // Reset state to allow immediate re-trigger if speed remains high
             lastSpeedOverLimit = false
             pendingInitialSpeedAlert = false
         }
@@ -233,7 +266,11 @@ class AppViewModel @Inject constructor(
 
     fun triggerPanic() { triggerAlertWithTimer(RuleType.PANIC) }
 
+    // --- Monitor Dashboard & Real-time Alerts ---
+
+    /** Sets up real-time monitoring of alerts for all users supervised by this Monitor. */
     fun startMonitoringDashboard(monitorUid: String) {
+        // Global listener for new alerts (popups)
         if (monitorPopupListener == null) {
             monitorPopupListener = db.collection("users").document(monitorUid).collection("alerts")
                 .addSnapshotListener { snapshot, _ ->
@@ -242,6 +279,7 @@ class AppViewModel @Inject constructor(
                     snapshot?.documentChanges?.forEach { diff ->
                         if (diff.type == DocumentChange.Type.ADDED) {
                             val alert = diff.document.toObject(Alert::class.java).copy(id = diff.document.id)
+                            // Show popup only for very recent alerts
                             if ((now - alert.timestamp) < 120_000L && !newPending.any { it.id == alert.id }) {
                                 newPending.add(alert)
                             }
@@ -251,10 +289,9 @@ class AppViewModel @Inject constructor(
                 }
         }
 
-        // Get protected users for this monitor
         val pIds = state.me?.protectedUsers ?: emptyList()
 
-        // Remove listeners for users that are no longer linked
+        // Sync listeners for protected users
         val currentKeys = protectedAlertsListeners.keys.toSet()
         val toRemove = currentKeys - pIds.toSet()
         toRemove.forEach { pUid ->
@@ -284,7 +321,6 @@ class AppViewModel @Inject constructor(
             }
         }
 
-        // Update monitorAlerts in case pIds changed
         state = state.copy(monitorAlerts = filteredMonitorAlerts(alertsMap.values.flatten()))
 
         viewModelScope.launch {
@@ -295,6 +331,7 @@ class AppViewModel @Inject constructor(
         }
     }
 
+    /** Dismisses an incoming alert popup and removes the temporary record from the monitor's collection. */
     fun dismissIncomingAlert() = viewModelScope.launch {
         val me = state.me ?: return@launch
         val alert = state.pendingAlerts.firstOrNull() ?: return@launch
@@ -313,6 +350,8 @@ class AppViewModel @Inject constructor(
         } catch (e: Exception) { }
     }
 
+    // --- Protected History & Profile ---
+
     fun refreshMyAlertsHistory() = viewModelScope.launch {
         val uid = state.me?.uid ?: authRepo.getCurrentUid() ?: return@launch
         startMyAlertsListener(uid)
@@ -329,6 +368,10 @@ class AppViewModel @Inject constructor(
         } catch (e: Exception) { }
     }
 
+    /** 
+     * Loads the current user's profile and sets up the app based on their roles.
+     * Manages role-specific listeners (Protected vs Monitor).
+     */
     fun loadMyProfile() = viewModelScope.launch {
         state = state.copy(isLoading = true)
         try {
@@ -412,12 +455,14 @@ class AppViewModel @Inject constructor(
         }
     }
 
+    // --- Background Monitors (Geofence, Speed, Inactivity, Accident) ---
+
     private fun startGeofenceMonitor() {
         if (geofenceJob != null) return
         geofenceJob = viewModelScope.launch {
             checkGeofenceOnce()
             while (true) {
-                delay(300_000)
+                delay(300_000) // Check every 5 minutes
                 checkGeofenceOnce()
             }
         }
@@ -428,7 +473,7 @@ class AppViewModel @Inject constructor(
         speedJob = viewModelScope.launch {
             checkSpeedOnce()
             while (true) {
-                delay(15000)
+                delay(15000) // Check every 15 seconds
                 checkSpeedOnce()
             }
         }
@@ -439,7 +484,7 @@ class AppViewModel @Inject constructor(
         accidentJob = viewModelScope.launch {
             checkAccidentOnce()
             while (true) {
-                delay(2000)
+                delay(2000) // Check frequently for sharp deceleration
                 checkAccidentOnce()
             }
         }
@@ -467,28 +512,21 @@ class AppViewModel @Inject constructor(
         val shouldRun = state.activeMode == AppMode.PROTECTED &&
             protectedMonitoringReady &&
             authorizedMaxSpeedKmh() != null
-        Log.d(
-            "SpeedMonitor",
-            "updateSpeedMonitorState: mode=${state.activeMode} ready=$protectedMonitoringReady max=${authorizedMaxSpeedKmh()} run=$shouldRun"
-        )
-        if (shouldRun) {
-            startSpeedMonitor()
-        } else if (speedJob != null) {
-            stopSpeedMonitor(resetState = true)
-        }
+        Log.d("SpeedMonitor", "updateSpeedMonitorState: run=$shouldRun")
+        if (shouldRun) startSpeedMonitor() else stopSpeedMonitor(resetState = true)
     }
 
     private fun updateAccidentMonitorState() {
         val shouldRun = state.activeMode == AppMode.PROTECTED &&
             protectedMonitoringReady &&
             isAccidentAuthorized()
-        if (shouldRun) {
-            startAccidentMonitor()
-        } else if (accidentJob != null) {
-            stopAccidentMonitor(resetState = true)
-        }
+        if (shouldRun) startAccidentMonitor() else stopAccidentMonitor(resetState = true)
     }
 
+    /** 
+     * Delays the start of background monitoring after a role/mode switch 
+     * to prevent false alerts during initialization.
+     */
     private fun scheduleProtectedMonitoringStart() {
         protectedMonitoringDelayJob?.cancel()
         protectedMonitoringReady = false
@@ -517,59 +555,39 @@ class AppViewModel @Inject constructor(
         stopAccidentMonitor(resetState = true)
     }
 
+    // --- Safety Rule Heuristics ---
+
     private suspend fun checkGeofenceOnce() {
-        if (state.activeMode != AppMode.PROTECTED) {
-            lastGeofenceInside = null
-            return
-        }
-
-        val authorizedBundles = state.monitorRuleBundles.filter {
-            it.authorizedTypes.contains(RuleType.GEOFENCE)
-        }
-        if (authorizedBundles.isEmpty()) {
-            lastGeofenceInside = null
-            return
-        }
-
-        if (!isWithinAnyWindow(state.timeWindows)) {
-            lastGeofenceInside = null
-            return
-        }
+        if (state.activeMode != AppMode.PROTECTED) { lastGeofenceInside = null; return }
+        
+        val authorizedBundles = state.monitorRuleBundles.filter { it.authorizedTypes.contains(RuleType.GEOFENCE) }
+        if (authorizedBundles.isEmpty() || !isWithinAnyWindow(state.timeWindows)) { lastGeofenceInside = null; return }
 
         val areas = authorizedBundles.flatMap { bundle ->
-            bundle.requested.filter { it.type == RuleType.GEOFENCE }
-                .flatMap { it.params.geofenceAreas ?: emptyList() }
+            bundle.requested.filter { it.type == RuleType.GEOFENCE }.flatMap { it.params.geofenceAreas ?: emptyList() }
         }
-        if (areas.isEmpty()) {
-            lastGeofenceInside = null
-            return
-        }
+        if (areas.isEmpty()) { lastGeofenceInside = null; return }
 
         val loc = locationProvider?.invoke() ?: return
         val isInside = areas.any { area ->
-            val distance = distanceMeters(
-                loc.latitude,
-                loc.longitude,
-                area.latitude,
-                area.longitude
-            )
-            distance <= area.radiusMeters
+            distanceMeters(loc.latitude, loc.longitude, area.latitude, area.longitude) <= area.radiusMeters
         }
 
         val wasInside = lastGeofenceInside
         lastGeofenceInside = isInside
+        // Trigger alert only if exiting a safe zone
         if ((wasInside == null && !isInside) || (wasInside == true && !isInside)) {
             triggerAlertWithTimer(RuleType.GEOFENCE)
         }
     }
 
+    // --- Rules Synchronization & Firestore Listeners ---
+
     private fun startRulesByMonitorListener(uid: String) {
         rulesByMonitorListener?.remove()
         rulesByMonitorListener = db.collection("users").document(uid).collection("rulesByMonitor")
             .addSnapshotListener { snap, _ ->
-                Log.d("AppViewModel", "rulesByMonitor snapshot for $uid: ${snap?.size() ?: 0} docs")
                 val bundles = snap?.documents?.mapNotNull { d -> parseRulesBundle(d) } ?: emptyList()
-
                 state = state.copy(
                     monitorRuleBundles = bundles,
                     inactivityAuthorized = bundles.any { it.authorizedTypes.contains(RuleType.PROLONGED_INACTIVITY) }
@@ -577,10 +595,7 @@ class AppViewModel @Inject constructor(
                 syncFallDetectionWithAuthorizations()
                 updateSpeedMonitorState()
                 updateAccidentMonitorState()
-                viewModelScope.launch {
-                    checkGeofenceOnce()
-                    checkSpeedOnce()
-                }
+                viewModelScope.launch { checkGeofenceOnce(); checkSpeedOnce() }
             }
     }
 
@@ -590,19 +605,8 @@ class AppViewModel @Inject constructor(
         selectedProtectedRulesListener = db.collection("users").document(protectedUid)
             .collection("rulesByMonitor").document(monitorUid)
             .addSnapshotListener { snap, _ ->
-                if (snap != null && snap.exists()) {
-                    state = state.copy(rulesForSelectedProtected = parseRulesBundle(snap))
-                } else {
-                    state = state.copy(rulesForSelectedProtected = null)
-                }
+                state = state.copy(rulesForSelectedProtected = snap?.let { if (it.exists()) parseRulesBundle(it) else null })
             }
-        viewModelScope.launch {
-            try {
-                val snap = db.collection("users").document(protectedUid)
-                    .collection("rulesByMonitor").document(monitorUid).get().await()
-                state = state.copy(rulesForSelectedProtected = parseRulesBundle(snap))
-            } catch (e: Exception) { }
-        }
     }
 
     fun clearSelectedProtectedRules() {
@@ -626,19 +630,23 @@ class AppViewModel @Inject constructor(
             syncFallDetectionWithAuthorizations()
             updateSpeedMonitorState()
             updateAccidentMonitorState()
-            checkSpeedOnce()
         } catch (e: Exception) { }
     }
+
+    // --- User Actions & Security Settings ---
 
     fun resetInactivityTimer() { state = state.copy(userInactivitySeconds = 0) }
     fun updateInactivityDuration(m: String) = viewModelScope.launch { try { authRepo.updateInactivityDuration(m.toIntOrNull() ?: 15); state = state.copy(isSecurityUpdateSuccessful = true) } catch (e: Exception) {} }
     fun updateCancelPin(p: String) = viewModelScope.launch { try { authRepo.updateAlertCancelCode(p); state = state.copy(isSecurityUpdateSuccessful = true) } catch (e: Exception) {} }
+    
+    /** Checks if the PIN entered by the user matches their cancellation code. */
     fun tryCancelAlert(typed: String) {
         val correct = state.me?.alertCancelCode ?: "0000"
         if (typed == correct) state = state.copy(typedCancelCode = typed, cancelPinError = null)
         else state = state.copy(cancelPinError = "Incorrect PIN.")
     }
 
+    /** Full cleanup of ViewModel state and listeners. Called during logout or destruction. */
     fun clear() {
         profileListener?.remove()
         myAlertsListener?.remove()
@@ -660,6 +668,7 @@ class AppViewModel @Inject constructor(
         state = state.copy(shownRuleRequestKeys = state.shownRuleRequestKeys + key)
     }
 
+    // --- Success Consumers (for UI feedback resets) ---
     fun consumeSecurityUpdateSuccess() { state = state.copy(isSecurityUpdateSuccessful = false) }
     fun consumeLinkingSuccess() { state = state.copy(isLinkingSuccessful = false) }
     fun consumeLinkError() { state = state.copy(linkError = null) }
@@ -668,89 +677,79 @@ class AppViewModel @Inject constructor(
     fun consumeRequestSuccess() { state = state.copy(isRequestSuccessful = false) }
     fun consumeAdditionSuccess() { state = state.copy(isAdditionSuccessful = false) }
 
+    // --- Association (OTP) & Linking ---
+
     fun generateOtp() = viewModelScope.launch { try { state = state.copy(myOtp = authRepo.generateAssociationCode()) } catch (e: Exception) {} }
+    
+    /** Links a Monitor to a Protected user using the provided code. */
     fun linkWithOtp(code: String) = viewModelScope.launch {
         try {
             authRepo.linkWithAssociationCode(code)
             val uid = authRepo.getCurrentUid()
             if (uid != null) {
                 val me = authRepo.getUserProfile(uid)
-                state = state.copy(
-                    me = me,
-                    linkedProtectedUsers = me.protectedUsers.map { authRepo.getUserProfile(it) },
-                    isLinkingSuccessful = true
-                )
+                state = state.copy(me = me, linkedProtectedUsers = me.protectedUsers.map { authRepo.getUserProfile(it) }, isLinkingSuccessful = true)
                 startMonitoringDashboard(uid)
-            } else {
-                state = state.copy(isLinkingSuccessful = true)
-            }
+            } else { state = state.copy(isLinkingSuccessful = true) }
         } catch (e: Exception) {
             val msg = e.message ?: "Linking failed."
             state = when {
-                msg.contains("Cannot monitor yourself") ->
-                    state.copy(linkError = "A user cannot be their own monitor and protected user.")
-                msg.contains("Invalid code") ->
-                    state.copy(linkError = "Invalid code. Please check the 6-digit code and try again.")
-                else ->
-                    state.copy(error = msg)
+                msg.contains("Cannot monitor yourself") -> state.copy(linkError = "A user cannot be their own monitor and protected user.")
+                msg.contains("Invalid code") -> state.copy(linkError = "Invalid code. Please check the 6-digit code and try again.")
+                else -> state.copy(error = msg)
             }
         }
     }
+
     fun removeMonitor(id: String) = viewModelScope.launch { try { authRepo.removeAssociation(id, state.me!!.uid); state = state.copy(isRemovalSuccessful = true) } catch (e: Exception) {} }
     fun removeProtectedUser(id: String) = viewModelScope.launch { try { authRepo.removeAssociation(state.me!!.uid, id); state = state.copy(isRemovalSuccessful = true) } catch (e: Exception) {} }
+    
+    /** Allows a Monitor to request specific monitoring rules for a Protected user. */
     fun requestRulesForProtected(p: String, t: List<RuleType>, r: RuleParams) = viewModelScope.launch { try { monitoringRepo.requestRules(p, state.me!!.uid, t.map { MonitoringRule(it, r, true) }); state = state.copy(isRequestSuccessful = true) } catch (e: Exception) {} }
+    
     fun loadRulesForProtected(p: String) = viewModelScope.launch { try { state = state.copy(rulesForSelectedProtected = monitoringRepo.getRulesForProtected(p).find { it.monitorId == state.me!!.uid }) } catch (e: Exception) {} }
-    fun saveAuthorizations(
-        m: String,
-        a: List<RuleType>,
-        i: Int?,
-        geofenceAreas: List<GeofenceArea>?
-    ) = viewModelScope.launch {
+
+    /** 
+     * Saves authorizations granted by the Protected user to a specific Monitor.
+     * Triggers immediate checks for newly authorized rules (like geofencing).
+     */
+    fun saveAuthorizations(m: String, a: List<RuleType>, i: Int?, geofenceAreas: List<GeofenceArea>?) = viewModelScope.launch {
         try {
-            val inactivityMinutes = if (a.contains(RuleType.PROLONGED_INACTIVITY)) {
-                i
-            } else {
-                0
-            }
+            val inactivityMinutes = if (a.contains(RuleType.PROLONGED_INACTIVITY)) i else 0
             monitoringRepo.saveAuthorizations(state.me!!.uid, m, a, inactivityMinutes, geofenceAreas)
-            if (inactivityMinutes != null) {
-                authRepo.updateInactivityDuration(inactivityMinutes)
-            }
-            if (geofenceAreas != null) {
-                lastGeofenceInside = true
-                checkGeofenceOnce()
-            }
+            if (inactivityMinutes != null) authRepo.updateInactivityDuration(inactivityMinutes)
+            if (geofenceAreas != null) { lastGeofenceInside = true; checkGeofenceOnce() }
             refreshProtectedMetadata(state.me!!.uid)
         } catch (e: Exception) {}
     }
+
+    // --- Time Window Management ---
+
     fun addTimeWindow(d: List<Int>, s: Int, e: Int) = viewModelScope.launch {
         try {
             monitoringRepo.addTimeWindow(state.me!!.uid, TimeWindow(daysOfWeek = d, startHour = s, endHour = e))
-            val windows = monitoringRepo.listTimeWindows(state.me!!.uid)
-            state = state.copy(timeWindows = windows, isAdditionSuccessful = true)
+            state = state.copy(timeWindows = monitoringRepo.listTimeWindows(state.me!!.uid), isAdditionSuccessful = true)
         } catch (e: Exception) { }
     }
+
     fun removeTimeWindow(id: String) = viewModelScope.launch {
         try {
             monitoringRepo.deleteTimeWindow(state.me!!.uid, id)
-            val windows = monitoringRepo.listTimeWindows(state.me!!.uid)
-            state = state.copy(timeWindows = windows, isRemovalSuccessful = true)
+            state = state.copy(timeWindows = monitoringRepo.listTimeWindows(state.me!!.uid), isRemovalSuccessful = true)
         } catch (e: Exception) { }
     }
+
+    // --- Service Management ---
+
+    /** Manages the lifecycle of the background FallDetectionService. */
     fun setFallDetectionEnabled(enabled: Boolean) {
         val me = state.me ?: return
-        if (!me.roles.contains("Protected")) return
-        if (enabled == state.isFallDetectionEnabled) return
+        if (!me.roles.contains("Protected") || enabled == state.isFallDetectionEnabled) return
         val intent = Intent(context, FallDetectionService::class.java)
         if (enabled) {
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
-            }
-        } else {
-            context.stopService(intent)
-        }
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) context.startForegroundService(intent)
+            else context.startService(intent)
+        } else { context.stopService(intent) }
         state = state.copy(isFallDetectionEnabled = enabled)
     }
 
@@ -759,21 +758,20 @@ class AppViewModel @Inject constructor(
         stopVideoRecording()
     }
 
+    // --- Core Monitoring Heuristics & Helpers ---
+
     private fun startInactivityTimer() {
         inactivityJob?.cancel()
         inactivityJob = viewModelScope.launch {
             while (true) {
                 delay(1000)
-        if (state.activeMode == AppMode.PROTECTED && state.inactivityAuthorized && state.inactivityDurationMin > 0) {
-            if (!isWithinAnyWindow(state.timeWindows)) {
-                state = state.copy(userInactivitySeconds = 0)
-                continue
-            }
-            state = state.copy(userInactivitySeconds = state.userInactivitySeconds + 1)
-            if (state.userInactivitySeconds >= state.inactivityDurationMin * 60) {
-                triggerInactivityAlert()
-                resetInactivityTimer()
-            }
+                if (state.activeMode == AppMode.PROTECTED && state.inactivityAuthorized && state.inactivityDurationMin > 0) {
+                    if (!isWithinAnyWindow(state.timeWindows)) { state = state.copy(userInactivitySeconds = 0); continue }
+                    state = state.copy(userInactivitySeconds = state.userInactivitySeconds + 1)
+                    if (state.userInactivitySeconds >= state.inactivityDurationMin * 60) {
+                        triggerInactivityAlert()
+                        resetInactivityTimer()
+                    }
                 } else { state = state.copy(userInactivitySeconds = 0) }
             }
         }
@@ -782,18 +780,11 @@ class AppViewModel @Inject constructor(
     fun setActiveMode(mode: AppMode) {
         if (state.activeMode != mode) {
             if (mode == AppMode.MONITOR) {
+                stopProtectedMonitoring()
                 setFallDetectionEnabled(false)
                 stopVideoRecording()
-                state = state.copy(
-                    activeMode = mode,
-                    isCancelWindowOpen = false,
-                    cancelSecondsLeft = 0,
-                    isRecordingPopupOpen = false,
-                    recordingSecondsLeft = 0,
-                    userInactivitySeconds = 0
-                )
+                state = state.copy(activeMode = mode, isCancelWindowOpen = false, cancelSecondsLeft = 0, isRecordingPopupOpen = false, recordingSecondsLeft = 0, userInactivitySeconds = 0)
                 lastGeofenceInside = null
-                stopProtectedMonitoring()
             } else {
                 state = state.copy(activeMode = mode)
                 scheduleProtectedMonitoringStart()
@@ -807,172 +798,89 @@ class AppViewModel @Inject constructor(
         val cal = Calendar.getInstance()
         val day = ((cal.get(Calendar.DAY_OF_WEEK) + 5) % 7) + 1
         val hour = cal.get(Calendar.HOUR_OF_DAY)
-        return windows.any { window ->
-            day in window.daysOfWeek && hour in window.startHour until window.endHour
-        }
+        return windows.any { window -> day in window.daysOfWeek && hour in window.startHour until window.endHour }
     }
 
-    private fun distanceMeters(
-        lat1: Double,
-        lon1: Double,
-        lat2: Double,
-        lon2: Double
-    ): Double {
+    private fun distanceMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
         val r = 6371000.0
         val dLat = Math.toRadians(lat2 - lat1)
         val dLon = Math.toRadians(lon2 - lon1)
-        val a = sin(dLat / 2) * sin(dLat / 2) +
-            cos(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) *
-            sin(dLon / 2) * sin(dLon / 2)
+        val a = sin(dLat / 2) * sin(dLat / 2) + cos(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) * sin(dLon / 2) * sin(dLon / 2)
         val c = 2 * atan2(sqrt(a), sqrt(1 - a))
         return r * c
     }
 
+    /** Parses a Firestore document into a ustructured MonitorRulesBundle. */
     private fun parseRulesBundle(d: DocumentSnapshot): MonitorRulesBundle? {
-        val storedAreas = (d.get("geofenceAreas") as? List<*>)
-            ?.mapNotNull { it as? Map<*, *> }
-            ?.mapNotNull {
-                val lat = (it["latitude"] as? Number)?.toDouble() ?: return@mapNotNull null
-                val lon = (it["longitude"] as? Number)?.toDouble() ?: return@mapNotNull null
-                val radius = (it["radiusMeters"] as? Number)?.toDouble() ?: return@mapNotNull null
-                GeofenceArea(latitude = lat, longitude = lon, radiusMeters = radius)
-            }
+        val storedAreas = (d.get("geofenceAreas") as? List<*>)?.mapNotNull { it as? Map<*, *> }?.mapNotNull {
+            val lat = (it["latitude"] as? Number)?.toDouble() ?: return@mapNotNull null
+            val lon = (it["longitude"] as? Number)?.toDouble() ?: return@mapNotNull null
+            val radius = (it["radiusMeters"] as? Number)?.toDouble() ?: return@mapNotNull null
+            GeofenceArea(latitude = lat, longitude = lon, radiusMeters = radius)
+        }
 
-        val requested = (d.get("requested") as? List<*>)
-            ?.mapNotNull { it as? Map<*, *> }
-            ?.mapNotNull {
-                val typeStr = it["type"] as? String ?: return@mapNotNull null
-                val type = runCatching { RuleType.valueOf(typeStr) }.getOrNull() ?: return@mapNotNull null
-                val paramsMap = it["params"] as? Map<*, *>
-                val params = RuleParams(
-                    maxSpeed = (paramsMap?.get("maxSpeed") as? Number)?.toFloat(),
-                    inactivityDurationMin = (paramsMap?.get("inactivityDurationMin") as? Number)?.toInt(),
-                    geofenceAreas = if (type == RuleType.GEOFENCE) storedAreas else null,
-                    geofenceRadiusMeters = (paramsMap?.get("geofenceRadiusMeters") as? Number)?.toDouble()
-                )
-                MonitoringRule(type = type, params = params)
-            } ?: emptyList()
+        val requested = (d.get("requested") as? List<*>)?.mapNotNull { it as? Map<*, *> }?.mapNotNull {
+            val typeStr = it["type"] as? String ?: return@mapNotNull null
+            val type = runCatching { RuleType.valueOf(typeStr) }.getOrNull() ?: return@mapNotNull null
+            val paramsMap = it["params"] as? Map<*, *>
+            val params = RuleParams(
+                maxSpeed = (paramsMap?.get("maxSpeed") as? Number)?.toFloat(),
+                inactivityDurationMin = (paramsMap?.get("inactivityDurationMin") as? Number)?.toInt(),
+                geofenceAreas = if (type == RuleType.GEOFENCE) storedAreas else null,
+                geofenceRadiusMeters = (paramsMap?.get("geofenceRadiusMeters") as? Number)?.toDouble()
+            )
+            MonitoringRule(type = type, params = params)
+        } ?: emptyList()
 
         return MonitorRulesBundle(
             monitorId = d.id,
             requested = requested,
-            authorizedTypes = (d.get("authorizedTypes") as? List<*>)
-                ?.mapNotNull { runCatching { RuleType.valueOf(it as String) }.getOrNull() }
-                ?: emptyList()
+            authorizedTypes = (d.get("authorizedTypes") as? List<*>)?.mapNotNull { runCatching { RuleType.valueOf(it as String) }.getOrNull() } ?: emptyList()
         )
     }
 
-    private fun triggerInactivityAlert() = viewModelScope.launch {
-        triggerAlertWithTimer(RuleType.PROLONGED_INACTIVITY)
-    }
+    private fun triggerInactivityAlert() = viewModelScope.launch { triggerAlertWithTimer(RuleType.PROLONGED_INACTIVITY) }
 
-    private fun isAccidentAuthorized(): Boolean =
-        state.monitorRuleBundles.any { it.authorizedTypes.contains(RuleType.ACCIDENT) }
+    private fun isAccidentAuthorized(): Boolean = state.monitorRuleBundles.any { it.authorizedTypes.contains(RuleType.ACCIDENT) }
 
     private fun syncFallDetectionWithAuthorizations() {
-        val shouldEnable = state.activeMode == AppMode.PROTECTED &&
-            state.monitorRuleBundles.any { it.authorizedTypes.contains(RuleType.FALL) }
+        val shouldEnable = state.activeMode == AppMode.PROTECTED && state.monitorRuleBundles.any { it.authorizedTypes.contains(RuleType.FALL) }
         setFallDetectionEnabled(shouldEnable)
     }
 
     private fun authorizedMaxSpeedKmh(): Float? {
-        val limits = state.monitorRuleBundles
-            .filter { it.authorizedTypes.contains(RuleType.SPEED) }
-            .mapNotNull { bundle ->
-                bundle.requested.firstOrNull { it.type == RuleType.SPEED }?.params?.maxSpeed
-            }
-        return limits.minOrNull()
+        return state.monitorRuleBundles.filter { it.authorizedTypes.contains(RuleType.SPEED) }.mapNotNull { bundle -> bundle.requested.firstOrNull { it.type == RuleType.SPEED }?.params?.maxSpeed }.minOrNull()
     }
 
     private suspend fun checkAccidentOnce() {
-        if (!protectedMonitoringReady) return
-        if (state.activeMode != AppMode.PROTECTED) {
-            lastAccidentSampleSpeedKmh = null
-            lastAccidentSampleAtMs = null
-            return
+        if (!protectedMonitoringReady || state.activeMode != AppMode.PROTECTED || !isAccidentAuthorized() || !isWithinAnyWindow(state.timeWindows)) {
+            lastAccidentSampleSpeedKmh = null; lastAccidentSampleAtMs = null; return
         }
-        if (!isAccidentAuthorized()) {
-            lastAccidentSampleSpeedKmh = null
-            lastAccidentSampleAtMs = null
-            return
-        }
-        if (!isWithinAnyWindow(state.timeWindows)) {
-            Log.d("AccidentMonitor", "skip: outside window")
-            return
-        }
-
         val speedKmh = speedProvider?.invoke() ?: return
         val now = System.currentTimeMillis()
         val prevSpeed = lastAccidentSampleSpeedKmh
         val prevAt = lastAccidentSampleAtMs
         lastAccidentSampleSpeedKmh = speedKmh
         lastAccidentSampleAtMs = now
-
-        if (prevSpeed == null || prevAt == null) {
-            Log.d("AccidentMonitor", "init: speed=$speedKmh")
-            return
-        }
+        if (prevSpeed == null || prevAt == null) return
         val deltaMs = now - prevAt
-        if (deltaMs <= 0L || deltaMs > 6000L) {
-            Log.d("AccidentMonitor", "skip: deltaMs=$deltaMs")
-            return
-        }
-
-        // Fixed internal heuristic: sharp drop over short interval (non-configurable).
-        val suddenDrop = prevSpeed >= 15f && speedKmh <= prevSpeed * 0.3f
-        if (!suddenDrop) {
-            Log.d("AccidentMonitor", "no-drop: prev=$prevSpeed now=$speedKmh dt=$deltaMs")
-            return
-        }
-
-        val nowTs = System.currentTimeMillis()
-        if (nowTs - lastAccidentAlertAt >= 60_000L) {
-            lastAccidentAlertAt = nowTs
-            Log.d("AccidentMonitor", "fire: prev=$prevSpeed now=$speedKmh dt=$deltaMs")
+        if (deltaMs <= 0L || deltaMs > 6000L) return
+        // Sharp deceleration detection logic
+        if (prevSpeed >= 15f && speedKmh <= prevSpeed * 0.3f && (now - lastAccidentAlertAt >= 60_000L)) {
+            lastAccidentAlertAt = now
             alertRepo.emitDetectionEvent(RuleType.ACCIDENT)
         }
     }
 
     private suspend fun checkSpeedOnce() {
-        if (!protectedMonitoringReady) return
-        val now = System.currentTimeMillis()
-        if (now - lastLoggedSpeedCheckAt > 10_000L) {
-            lastLoggedSpeedCheckAt = now
-            Log.d("SpeedMonitor", "checkSpeedOnce: mode=${state.activeMode} windows=${state.timeWindows.size}")
-        }
-        if (state.activeMode != AppMode.PROTECTED) {
-            lastSpeedOverLimit = null
-            pendingInitialSpeedAlert = false
-            return
-        }
-
+        if (!protectedMonitoringReady || state.activeMode != AppMode.PROTECTED) { lastSpeedOverLimit = null; return }
         val maxSpeed = authorizedMaxSpeedKmh()
-        if (maxSpeed == null || maxSpeed <= 0f) {
-            lastSpeedOverLimit = null
-            pendingInitialSpeedAlert = false
-            Log.d("SpeedMonitor", "skip: no maxSpeed")
-            return
-        }
-        if (!isWithinAnyWindow(state.timeWindows)) {
-            Log.d("SpeedMonitor", "skip: outside window")
-            return
-        }
-
-        val speedKmh = speedProvider?.invoke()
-        if (speedKmh == null || speedKmh < 0f) {
-            Log.d("SpeedMonitor", "skip: speed unavailable")
-            return
-        }
-
+        if (maxSpeed == null || maxSpeed <= 0f || !isWithinAnyWindow(state.timeWindows)) { lastSpeedOverLimit = null; return }
+        val speedKmh = speedProvider?.invoke() ?: return
         val overLimit = speedKmh > maxSpeed
         lastSpeedOverLimit = overLimit
-        pendingInitialSpeedAlert = false
-        if (!overLimit) return
-
-        val nowTs = System.currentTimeMillis()
-        if (nowTs - lastSpeedAlertAt >= 60_000L) {
-            lastSpeedAlertAt = nowTs
-            Log.d("SpeedMonitor", "fire: overlimit speed=$speedKmh max=$maxSpeed")
+        if (overLimit && (System.currentTimeMillis() - lastSpeedAlertAt >= 60_000L)) {
+            lastSpeedAlertAt = System.currentTimeMillis()
             triggerAlertWithTimer(RuleType.SPEED)
         }
     }

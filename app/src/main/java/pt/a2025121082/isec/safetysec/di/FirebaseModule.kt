@@ -10,26 +10,35 @@ import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
 
 /**
- * Hilt DI module that provides Firebase singleton instances.
- *
- * These providers ensure that FirebaseAuth / Firestore / FirebaseStorage
- * are created once and can be injected anywhere in the app.
+ * Dagger Hilt module responsible for providing Firebase singleton instances.
+ * 
+ * These providers allow for easy dependency injection of Firebase services 
+ * across the application, ensuring that only one instance of each service exists.
  */
 @Module
 @InstallIn(SingletonComponent::class)
 object FirebaseModule {
 
-    /** Provides a singleton FirebaseAuth instance. */
+    /**
+     * Provides a singleton instance of [FirebaseAuth].
+     * Used for user authentication, login, and registration.
+     */
     @Provides
     @Singleton
     fun provideFirebaseAuth(): FirebaseAuth = FirebaseAuth.getInstance()
 
-    /** Provides a singleton FirebaseFirestore instance. */
+    /**
+     * Provides a singleton instance of [FirebaseFirestore].
+     * Used for storing and retrieving user profiles, rules, and alert data.
+     */
     @Provides
     @Singleton
     fun provideFirestore(): FirebaseFirestore = FirebaseFirestore.getInstance()
 
-    /** Provides a singleton FirebaseStorage instance. */
+    /**
+     * Provides a singleton instance of [FirebaseStorage].
+     * Used for uploading and retrieving evidence videos during emergency alerts.
+     */
     @Provides
     @Singleton
     fun provideFirebaseStorage(): FirebaseStorage = FirebaseStorage.getInstance()

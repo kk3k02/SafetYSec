@@ -52,6 +52,13 @@ import pt.a2025121082.isec.safetysec.viewmodel.AuthViewModel
 
 /**
  * Modern login screen for SafetYSec.
+ * 
+ * Features:
+ * - Email and Password authentication.
+ * - Error and message feedback via Snackbars.
+ * - Email verification check with "Resend" option.
+ * - Responsive layout for Portrait and Landscape orientations.
+ * - Navigation to Registration and Password Reset flows.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -61,12 +68,15 @@ fun LoginScreen(
     onNavigateToResetPassword: () -> Unit,
     onLoginSuccess: () -> Unit
 ) {
+    /** Local state for user credentials. */
     var email by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
 
+    /** Observe UI state from the authentication ViewModel. */
     val state = viewModel.uiState
     val snackbarHostState = remember { SnackbarHostState() }
 
+    // Handle incoming error messages from the ViewModel
     LaunchedEffect(state.error) {
         state.error?.let {
             if (it.isNotBlank()) {
@@ -76,6 +86,7 @@ fun LoginScreen(
         }
     }
 
+    // Handle informational messages (e.g., success confirmations)
     LaunchedEffect(state.message) {
         state.message?.let {
             if (it.isNotBlank()) {
@@ -85,21 +96,26 @@ fun LoginScreen(
         }
     }
 
+    // React to successful authentication by triggering the success callback
     LaunchedEffect(state.isAuthenticated) {
         if (state.isAuthenticated) {
             onLoginSuccess()
         }
     }
 
+    /** Helper flag to determine if the error is related to unverified email address. */
     val isEmailVerificationProblem =
         (state.error ?: "").contains("verification", ignoreCase = true)
 
+    /** Access screen configuration to handle orientation changes. */
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { innerPadding ->
+        
+        /** Composable representing the visual branding (Logo + Welcome Text). */
         val logoSection: @Composable () -> Unit = {
             Icon(
                 imageVector = Icons.Default.Security,
@@ -123,9 +139,11 @@ fun LoginScreen(
             )
         }
 
+        /** Composable representing the input form and action buttons. */
         val formSection: @Composable () -> Unit = {
             Spacer(Modifier.height(48.dp))
 
+            // Email Input Field
             OutlinedTextField(
                 value = email,
                 onValueChange = { email = it },
@@ -143,6 +161,7 @@ fun LoginScreen(
 
             Spacer(Modifier.height(16.dp))
 
+            // Password Input Field
             OutlinedTextField(
                 value = password,
                 onValueChange = { password = it },
@@ -158,6 +177,7 @@ fun LoginScreen(
                 ),
                 keyboardActions = KeyboardActions(
                     onDone = {
+                        // Trigger login on keyboard 'Done' action if inputs are valid
                         if (!state.isLoading && email.isNotBlank() && password.isNotBlank()) {
                             viewModel.login(email, password)
                         }
@@ -165,6 +185,7 @@ fun LoginScreen(
                 )
             )
 
+            // Password Reset Link
             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
                 TextButton(onClick = onNavigateToResetPassword) {
                     Text("Forgot password?", style = MaterialTheme.typography.labelMedium)
@@ -173,6 +194,7 @@ fun LoginScreen(
 
             Spacer(Modifier.height(24.dp))
 
+            // Login Trigger Button
             Button(
                 onClick = { viewModel.login(email, password) },
                 enabled = !state.isLoading && email.isNotBlank() && password.isNotBlank(),
@@ -192,6 +214,7 @@ fun LoginScreen(
                 }
             }
 
+            // Option to resend verification email if the user is stuck
             if (isEmailVerificationProblem) {
                 TextButton(
                     onClick = { viewModel.resendVerificationEmail() },
@@ -203,6 +226,7 @@ fun LoginScreen(
 
             Spacer(Modifier.height(32.dp))
 
+            // Registration navigation area
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Center
@@ -223,7 +247,9 @@ fun LoginScreen(
             }
         }
 
+        // --- Adaptive Layout ---
         if (isLandscape) {
+            // Horizontal Split View for landscape mode
             Row(
                 modifier = Modifier
                     .fillMaxSize()
@@ -256,6 +282,7 @@ fun LoginScreen(
                 }
             }
         } else {
+            // Standard vertical layout for portrait mode
             Column(
                 modifier = Modifier
                     .fillMaxSize()

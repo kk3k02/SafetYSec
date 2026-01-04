@@ -32,6 +32,11 @@ import pt.a2025121082.isec.safetysec.data.model.RuleType
 import pt.a2025121082.isec.safetysec.viewmodel.AppViewModel
 import android.widget.Toast
 
+/**
+ * Main navigation flow for users in the "Protected" role.
+ * This composable manages the internal navigation, top bar titles, 
+ * bottom navigation bar, and the global Panic button.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProtectedFlow(
@@ -43,18 +48,24 @@ fun ProtectedFlow(
     val nav = rememberNavController()
     val entry by nav.currentBackStackEntryAsState()
     val currentRoute = entry?.destination?.route
+    
+    // Check if the user has permission to trigger a Panic alert
     val canTriggerPanic = appViewModel.state.monitorRuleBundles.any { bundle ->
         bundle.authorizedTypes.contains(RuleType.PANIC)
     }
+    
+    // UI state for the history clearing confirmation dialog
     val showClearDialog = remember { mutableStateOf(false) }
     val context = LocalContext.current
 
+    // Signal the ViewModel that the app is now in Protected mode
     LaunchedEffect(Unit) { appViewModel.setActiveMode(pt.a2025121082.isec.safetysec.viewmodel.AppMode.PROTECTED) }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
+                    // Dynamically set the screen title based on the current navigation route
                     val title = when (currentRoute) {
                         PRoutes.History -> "Alert History"
                         PRoutes.Windows -> "Time Windows"
@@ -65,6 +76,7 @@ fun ProtectedFlow(
                     Text(title)
                 },
                 actions = {
+                    // Show "Clear History" button only when viewing the history screen
                     if (currentRoute == PRoutes.History) {
                         IconButton(
                             onClick = { showClearDialog.value = true },
@@ -73,6 +85,7 @@ fun ProtectedFlow(
                             Icon(Icons.Default.Delete, contentDescription = "Clear history")
                         }
                     }
+                    // Global Logout button
                     IconButton(onClick = onLogout) {
                         Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = "Logout")
                     }
@@ -84,6 +97,7 @@ fun ProtectedFlow(
                 val dest = entry?.destination
                 fun go(route: String) {
                     nav.navigate(route) {
+                        // Standard navigation behavior: pop to start destination and restore state
                         popUpTo(nav.graph.findStartDestination().id) { saveState = true }
                         restoreState = true
                         launchSingleTop = true
@@ -120,13 +134,14 @@ fun ProtectedFlow(
             }
         },
         floatingActionButton = {
+            // Hide Panic FAB on the Windows screen (usually reserved for 'Add Window')
             if (currentRoute != PRoutes.Windows) {
                 FloatingActionButton(
                     onClick = { if (canTriggerPanic) appViewModel.triggerPanic() },
                     containerColor = if (canTriggerPanic) {
                         FloatingActionButtonDefaults.containerColor
                     } else {
-                        MaterialTheme.colorScheme.surfaceVariant
+                        MaterialTheme.colorScheme.surfaceVariant // Dimmed color if unauthorized
                     }
                 ) {
                     Icon(Icons.Filled.Warning, contentDescription = "Panic")
@@ -146,9 +161,11 @@ fun ProtectedFlow(
             }
         }
 
+        // Global alert cancellation dialog (shown when a rule is triggered)
         ProtectedCancelAlertDialog(appViewModel)
     }
 
+    // Confirmation dialog for clearing alert history
     if (showClearDialog.value) {
         AlertDialog(
             onDismissRequest = { showClearDialog.value = false },
@@ -168,6 +185,9 @@ fun ProtectedFlow(
     }
 }
 
+/**
+ * Route constants for the Protected user flow.
+ */
 private object PRoutes {
     const val History = "p_history"
     const val Windows = "p_windows"

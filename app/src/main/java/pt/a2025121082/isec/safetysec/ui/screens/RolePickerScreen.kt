@@ -17,7 +17,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
 /**
- * Modern role selection screen.
+ * Screen that allows the user to choose their primary role within the application.
+ * Users can choose between "Monitor Mode" (supervising others) or "Protected Mode" (being monitored).
+ * The layout adapts dynamically based on screen orientation.
  */
 @Composable
 fun RolePickerScreen(
@@ -25,6 +27,7 @@ fun RolePickerScreen(
     onGoMonitor: () -> Unit
 ) {
     val configuration = LocalConfiguration.current
+    // Detect landscape orientation to provide an optimized side-by-side layout
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     Column(
@@ -34,7 +37,7 @@ fun RolePickerScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        // App Icon / Logo Placeholder
+        // Application Branding Icon
         Icon(
             imageVector = Icons.Default.Security,
             contentDescription = null,
@@ -59,8 +62,9 @@ fun RolePickerScreen(
 
         Spacer(Modifier.height(48.dp))
 
-        // Role Selection Cards
+        // Role Selection Section
         if (isLandscape) {
+            // Horizontal layout for wider screens
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(16.dp)
@@ -84,6 +88,7 @@ fun RolePickerScreen(
                 )
             }
         } else {
+            // Vertical layout for standard mobile portrait orientation
             RoleCard(
                 title = "Protected Mode",
                 description = "You are the one being protected. Setup safety rules and emergency contacts.",
@@ -105,6 +110,7 @@ fun RolePickerScreen(
         
         Spacer(Modifier.height(32.dp))
         
+        // Instructional footer
         Text(
             text = "You can switch between modes anytime in your profile settings.",
             style = MaterialTheme.typography.labelSmall,
@@ -115,6 +121,10 @@ fun RolePickerScreen(
     }
 }
 
+/**
+ * A custom card component used to represent a selectable role.
+ * Includes an icon, title, and descriptive text.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun RoleCard(
@@ -137,6 +147,7 @@ private fun RoleCard(
                 .fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            // Circular icon background
             Surface(
                 shape = androidx.compose.foundation.shape.CircleShape,
                 color = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f),

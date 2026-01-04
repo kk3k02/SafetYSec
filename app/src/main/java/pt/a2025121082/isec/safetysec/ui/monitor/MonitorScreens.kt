@@ -40,7 +40,13 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 /**
- * Monitor dashboard screen.
+ * Main dashboard for the Monitor user.
+ * 
+ * Features:
+ * - Summary statistics (number of users and recent alerts).
+ * - List of currently linked protected users with unlinking capability.
+ * - Real-time activity log of incoming alerts with GPS and Video Evidence integration.
+ * - History clearing functionality.
  */
 @Composable
 fun MonitorDashboardScreen(vm: AppViewModel) {
@@ -49,11 +55,13 @@ fun MonitorDashboardScreen(vm: AppViewModel) {
     var showRemovalSuccessDialog by remember { mutableStateOf(false) }
     var showClearedDialog by remember { mutableStateOf(false) }
 
+    // Start real-time dashboard listeners when the user is loaded
     LaunchedEffect(state.me?.uid, state.me?.protectedUsers) {
         val uid = state.me?.uid ?: return@LaunchedEffect
         vm.startMonitoringDashboard(uid)
     }
 
+    // Feedback for successful user removal
     LaunchedEffect(state.isRemovalSuccessful) {
         if (state.isRemovalSuccessful) {
             showRemovalSuccessDialog = true
@@ -66,6 +74,7 @@ fun MonitorDashboardScreen(vm: AppViewModel) {
             .padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        // --- Statistics Section ---
         item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -76,6 +85,7 @@ fun MonitorDashboardScreen(vm: AppViewModel) {
             }
         }
 
+        // --- Supervised Users Section ---
         item {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.VerifiedUser, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
@@ -93,6 +103,7 @@ fun MonitorDashboardScreen(vm: AppViewModel) {
             }
         }
 
+        // --- Activity Log Section ---
         item {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.History, contentDescription = null, tint = MaterialTheme.colorScheme.secondary)
@@ -120,6 +131,7 @@ fun MonitorDashboardScreen(vm: AppViewModel) {
             }
         }
 
+        // General Error Display
         item {
             state.error?.let {
                 Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp))
@@ -127,6 +139,7 @@ fun MonitorDashboardScreen(vm: AppViewModel) {
         }
     }
 
+    // Feedback Overlays
     if (showRemovalSuccessDialog) {
         AlertDialog(
             onDismissRequest = {
@@ -160,6 +173,7 @@ fun MonitorDashboardScreen(vm: AppViewModel) {
     }
 }
 
+/** Helper component for summary statistics. */
 @Composable
 fun StatCard(label: String, value: String, icon: androidx.compose.ui.graphics.vector.ImageVector, modifier: Modifier = Modifier) {
     Card(
@@ -188,6 +202,7 @@ fun StatCard(label: String, value: String, icon: androidx.compose.ui.graphics.ve
     }
 }
 
+/** Placeholder for empty lists. */
 @Composable
 fun EmptyStateCard(message: String) {
     Card(
@@ -201,6 +216,7 @@ fun EmptyStateCard(message: String) {
     }
 }
 
+/** Card displaying a protected user's basic info with removal action. */
 @Composable
 fun ProtectedUserStatusCard(user: User, onRemove: () -> Unit) {
     Card(
@@ -229,6 +245,10 @@ fun ProtectedUserStatusCard(user: User, onRemove: () -> Unit) {
     }
 }
 
+/**
+ * Individual activity log item representing a specific alert.
+ * Supports viewing GPS location and expanding evidence video player.
+ */
 @Composable
 fun AlertItem(alert: Alert, sdf: SimpleDateFormat) {
     var showVideo by remember { mutableStateOf(false) }
@@ -238,6 +258,7 @@ fun AlertItem(alert: Alert, sdf: SimpleDateFormat) {
         colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF1F1))
     ) {
         Column(Modifier.padding(12.dp)) {
+            // Alert Header
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.Warning, contentDescription = null, tint = Color.Red)
                 Spacer(Modifier.width(8.dp))
@@ -252,6 +273,8 @@ fun AlertItem(alert: Alert, sdf: SimpleDateFormat) {
             }
             Spacer(Modifier.height(4.dp))
             Text("User: ${alert.protectedName}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+            
+            // GPS Location
             if (alert.location != null) {
                 Text(
                     "Location: ${String.format("%.5f", alert.location.latitude)}, ${String.format("%.5f", alert.location.longitude)}",
@@ -260,6 +283,7 @@ fun AlertItem(alert: Alert, sdf: SimpleDateFormat) {
                 )
             }
 
+            // Evidence Video Control
             val videoUrl = alert.videoUrl
             if (!videoUrl.isNullOrBlank()) {
                 Spacer(Modifier.height(8.dp))
@@ -274,6 +298,7 @@ fun AlertItem(alert: Alert, sdf: SimpleDateFormat) {
                     Text(if (showVideo) "Hide Video Evidence" else "View Evidence Video")
                 }
 
+                // Inline Video Player with animation
                 AnimatedVisibility(visible = showVideo) {
                     Box(
                         modifier = Modifier
@@ -292,6 +317,9 @@ fun AlertItem(alert: Alert, sdf: SimpleDateFormat) {
     }
 }
 
+/**
+ * Screen for linking accounts using a 6-digit OTP code provided by the Protected user.
+ */
 @Composable
 fun MonitorLinkScreen(vm: AppViewModel) {
     val st = vm.state
@@ -326,6 +354,7 @@ fun MonitorLinkScreen(vm: AppViewModel) {
         )
         Spacer(Modifier.height(16.dp))
 
+        // Grid of input fields for OTP with auto-focus logic
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -336,6 +365,7 @@ fun MonitorLinkScreen(vm: AppViewModel) {
                     onValueChange = { input ->
                         val digit = input.filter { it.isDigit() }.takeLast(1)
                         digits[index] = digit
+                        // Logic to move focus automatically between digit boxes
                         if (digit.isNotEmpty() && index < 5) {
                             focusRequesters[index + 1].requestFocus()
                         } else if (digit.isEmpty() && index > 0) {
@@ -366,6 +396,7 @@ fun MonitorLinkScreen(vm: AppViewModel) {
         st.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp)) }
     }
 
+    // Feedback Overlays
     if (showSuccessDialog) {
         AlertDialog(
             onDismissRequest = {
@@ -404,6 +435,10 @@ fun MonitorLinkScreen(vm: AppViewModel) {
     }
 }
 
+/**
+ * Screen for managing monitoring rules for linked users.
+ * Allows choosing a user and proposing new safety configurations (Speed, Fall, etc.).
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MonitorRulesScreen(vm: AppViewModel) {
@@ -420,11 +455,13 @@ fun MonitorRulesScreen(vm: AppViewModel) {
         }
     }
 
+    // Load rules specifically for the selected user
     LaunchedEffect(selectedUser) {
         selectedUser?.let { vm.observeRulesForProtected(it.uid) } ?: vm.clearSelectedProtectedRules()
     }
 
     LazyColumn(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp)) {
+        // --- User Selector ---
         item {
             ExposedDropdownMenuBox(
                 expanded = expanded,
@@ -459,8 +496,10 @@ fun MonitorRulesScreen(vm: AppViewModel) {
         }
 
         if (selectedUser != null) {
+            // --- Current Authorizations Summary ---
             item {
                 st.rulesForSelectedProtected?.let { bundle ->
+                    /** Helper to display human-readable rule name + parameters. */
                     fun ruleLabel(type: RuleType): String {
                         val base = type.displayName()
                         val rule = bundle.requested.firstOrNull { it.type == type }
@@ -495,6 +534,7 @@ fun MonitorRulesScreen(vm: AppViewModel) {
                             Text("Green = Authorized, Red = Denied", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
                             Spacer(Modifier.height(8.dp))
 
+                            // Read-only status indicators
                             displayRules.forEach { type ->
                                 val isAuth = bundle.authorizedTypes.contains(type)
                                 Row(
@@ -526,6 +566,7 @@ fun MonitorRulesScreen(vm: AppViewModel) {
                 }
             }
 
+            // --- Configuration Action ---
             item {
                 Button(
                     onClick = { showRequestDialog = true },
@@ -546,6 +587,7 @@ fun MonitorRulesScreen(vm: AppViewModel) {
         }
     }
 
+    // Dialog Flow for Rule Requests
     if (showRequestDialog) {
         selectedUser?.let { user ->
             RequestRulesDialog(
@@ -579,6 +621,9 @@ fun MonitorRulesScreen(vm: AppViewModel) {
     }
 }
 
+/**
+ * Dialog collecting new rule preferences from the Monitor.
+ */
 @Composable
 fun RequestRulesDialog(
     user: User,
@@ -616,6 +661,7 @@ fun RequestRulesDialog(
                 RuleToggle("Panic Button", panic) { panic = it }
 
                 Spacer(Modifier.height(16.dp))
+                // Conditional parameters based on selection
                 if (speed) {
                     OutlinedTextField(
                         value = maxSpeed,
@@ -672,6 +718,7 @@ fun RequestRulesDialog(
     )
 }
 
+/** Utility component for a standard rule toggle row. */
 @Composable
 private fun RuleToggle(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
     Row(
@@ -685,6 +732,7 @@ private fun RuleToggle(label: String, checked: Boolean, onChange: (Boolean) -> U
     }
 }
 
+/** Monitor's profile and account settings screen. */
 @Composable
 fun MonitorProfileScreen(
     onSwitchToProtected: () -> Unit,
@@ -693,6 +741,8 @@ fun MonitorProfileScreen(
     val authSt = authVm.uiState
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    
+    // UI states for settings dialogs
     var showEditNameDialog by remember { mutableStateOf(false) }
     var editedName by remember { mutableStateOf("") }
     var nameError by remember { mutableStateOf<String?>(null) }
@@ -734,6 +784,7 @@ fun MonitorProfileScreen(
                 }
             )
     ) {
+        // --- Profile Summary ---
         Card(modifier = Modifier.fillMaxWidth()) {
             Row(
                 modifier = Modifier.padding(16.dp),
@@ -779,6 +830,8 @@ fun MonitorProfileScreen(
 
         authSt.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
     }
+
+    // --- Overlay Dialogs for Settings ---
 
     if (showPasswordDialog) {
         AlertDialog(

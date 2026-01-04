@@ -19,16 +19,10 @@ import javax.inject.Inject
  * ViewModel responsible for authentication-related UI logic.
  *
  * Supported flows:
- * - Registration (creates account + sends verification email + stores profile in Firestore)
- * - Login (sign-in + email verification check)
- * - Password reset
- * - Resend verification email (MFA helper)
- * - Refresh auth state (e.g., after returning from email verification)
- *
- * Added profile features:
- * - Load account info (name from Firestore + email from FirebaseAuth)
- * - Update name/email
- * - Change password (with re-authentication)
+ * - Registration: creates account, sends verification email, and stores profile in Firestore.
+ * - Login: handles sign-in and enforces email verification check.
+ * - Password reset: sends recovery instructions via email.
+ * - Profile Management: handles loading and updating user info (name, email, password).
  */
 @HiltViewModel
 class AuthViewModel @Inject constructor(
@@ -36,14 +30,13 @@ class AuthViewModel @Inject constructor(
     private val db: FirebaseFirestore
 ) : ViewModel() {
 
-    /** UI state observed by Compose screens. */
+    /** UI state observed by Compose screens to react to auth changes. */
     var uiState by mutableStateOf(AuthState())
         private set
 
     /**
-     * Loads account info for Profile UI:
-     * - name from Firestore: users/{uid}.name
-     * - email from FirebaseAuth: currentUser.email
+     * Loads account info for the Profile UI.
+     * Fetches the display name from Firestore and the email from Firebase Auth.
      */
     fun loadAccountInfo() {
         viewModelScope.launch {
@@ -57,9 +50,12 @@ class AuthViewModel @Inject constructor(
                 val uid = user.uid
                 val email = user.email
 
+                // Fetch additional user data (like name) from Firestore
                 val snap = db.collection("users").document(uid).get().await()
                 val name = snap.getString("name")
                 val storedEmail = snap.getString("email")
+                
+                // Sync email in Firestore if it differs from Auth (e.g., after an update)
                 if (!email.isNullOrBlank() && email != storedEmail) {
                     db.collection("users").document(uid).update("email", email).await()
                 }
@@ -76,9 +72,9 @@ class AuthViewModel @Inject constructor(
 
     /**
      * Registration flow:
-     * - creates an account in Firebase Auth
-     * - sends an email verification message (basic MFA)
-     * - stores the user profile in Firestore
+     * 1. Creates a new user in Firebase Auth.
+     * 2. Sends an email verification (mandatory for this app).
+     * 3. Stores the initial user profile in Firestore.
      */
     fun register(email: String, password: String, name: String) {
         val e = email.trim()
@@ -115,9 +111,9 @@ class AuthViewModel @Inject constructor(
 
     /**
      * Login flow:
-     * - signs in via Firebase Auth
-     * - reloads the FirebaseUser and checks emailVerified (MFA)
-     * - if not verified, forces logout and blocks access
+     * 1. Signs in with credentials.
+     * 2. Reloads user data to check if email has been verified.
+     * 3. If verified, grants access; otherwise, logs out and prompts verification.
      */
     fun login(email: String, password: String) {
         val e = email.trim()
@@ -138,12 +134,12 @@ class AuthViewModel @Inject constructor(
                     return@launch
                 }
 
-                // reload() updates isEmailVerified after the user clicks the verification link
+                // Force a reload to get the latest 'isEmailVerified' status
                 firebaseUser.reload().await()
 
                 if (firebaseUser.isEmailVerified) {
                     uiState = uiState.copy(isAuthenticated = true, message = null)
-                    loadAccountInfo() // Refresh profile UI data
+                    loadAccountInfo() // Sync profile data after successful login
                 } else {
                     repository.logout()
                     uiState = uiState.copy(
@@ -160,7 +156,7 @@ class AuthViewModel @Inject constructor(
     }
 
     /**
-     * Logs out the user and resets the UI state.
+     * Logs out the user and clears the UI state.
      */
     fun logout() {
         repository.logout()
@@ -168,7 +164,7 @@ class AuthViewModel @Inject constructor(
     }
 
     /**
-     * Sends password reset instructions to the provided email.
+     * Triggers the Firebase password reset flow for the given email.
      */
     fun sendPasswordResetEmail(email: String) {
         val e = email.trim()
@@ -191,7 +187,7 @@ class AuthViewModel @Inject constructor(
     }
 
     /**
-     * Resends the verification email (MFA helper).
+     * Manually resends the verification email to the currently logged-in (but unverified) user.
      */
     fun resendVerificationEmail() {
         viewModelScope.launch {
@@ -214,7 +210,7 @@ class AuthViewModel @Inject constructor(
     }
 
     /**
-     * Refreshes the authentication state (e.g., after returning to the app from email verification).
+     * Refreshes the auth state. Useful when a user returns to the app after clicking the verification link.
      */
     fun refreshAuthState() {
         viewModelScope.launch {
@@ -230,7 +226,7 @@ class AuthViewModel @Inject constructor(
                 uiState = uiState.copy(isAuthenticated = user.isEmailVerified)
 
                 if (user.isEmailVerified) {
-                    loadAccountInfo() // Refresh profile UI data
+                    loadAccountInfo()
                 }
             } catch (ex: Exception) {
                 uiState = uiState.copy(error = "Failed to refresh auth state: ${ex.message}")
@@ -241,11 +237,8 @@ class AuthViewModel @Inject constructor(
     }
 
     /**
-     * Updates the user's profile data:
-     * - name (Firestore users/{uid}.name)
-     * - email (FirebaseAuth + Firestore users/{uid}.email) with re-authentication
-     *
-     * Note: [currentPassword] is required ONLY if the email is changing.
+     * Updates the user's profile information.
+     * Changing the email requires re-authentication with the current password.
      */
     fun updateProfile(newName: String, newEmail: String, currentPassword: String?) {
         val name = newName.trim()
@@ -263,14 +256,14 @@ class AuthViewModel @Inject constructor(
                 val uid = user.uid
                 val oldEmail = user.email.orEmpty()
 
-                // Update name in Firestore (if provided)
+                // 1. Update name in Firestore
                 if (name.isNotBlank()) {
                     db.collection("users").document(uid)
                         .update(mapOf("name" to name))
                         .await()
                 }
 
-                // Update email in FirebaseAuth + Firestore (if changed)
+                // 2. Handle email change request
                 var emailChangeRequested = false
                 if (email.isNotBlank() && email != oldEmail) {
                     val pwd = currentPassword?.trim().orEmpty()
@@ -279,10 +272,11 @@ class AuthViewModel @Inject constructor(
                         return@launch
                     }
 
-                    // Re-authentication is required for sensitive operations
+                    // Re-authenticate to allow sensitive operation
                     val cred = EmailAuthProvider.getCredential(oldEmail, pwd)
                     user.reauthenticate(cred).await()
 
+                    // Start email update process (requires verification of the new address)
                     user.verifyBeforeUpdateEmail(email).await()
                     emailChangeRequested = true
                 }
@@ -293,7 +287,7 @@ class AuthViewModel @Inject constructor(
                     "Profile updated successfully."
                 }
                 uiState = uiState.copy(message = message)
-                loadAccountInfo() // Refresh displayed account data
+                loadAccountInfo()
             } catch (ex: Exception) {
                 uiState = uiState.copy(error = "Profile update failed: ${ex.message}")
             } finally {
@@ -303,7 +297,7 @@ class AuthViewModel @Inject constructor(
     }
 
     /**
-     * Changes the FirebaseAuth password (requires re-authentication).
+     * Changes the user's password. Requires re-authentication for security.
      */
     fun changePassword(currentPassword: String, newPassword: String) {
         val currentPwd = currentPassword.trim()
@@ -328,6 +322,7 @@ class AuthViewModel @Inject constructor(
                     return@launch
                 }
 
+                // Sensitive operations require recent login or re-authentication
                 val cred = EmailAuthProvider.getCredential(email, currentPwd)
                 user.reauthenticate(cred).await()
                 user.updatePassword(newPwd).await()
@@ -341,20 +336,20 @@ class AuthViewModel @Inject constructor(
         }
     }
 
-    /** @return The current Firebase user (if authenticated), otherwise null. */
+    /** Returns the underlying FirebaseUser object if available. */
     fun currentFirebaseUser(): FirebaseUser? = repository.getCurrentUser()
 
-    /** Clears the current error message from the UI state. */
+    /** Resets any error message currently displayed in the UI. */
     fun clearError() {
         uiState = uiState.copy(error = null)
     }
 
-    /** Clears the current info message from the UI state. */
+    /** Resets any status message currently displayed in the UI. */
     fun clearMessage() {
         uiState = uiState.copy(message = null)
     }
 
-    /** Consumes (resets) the registration success flag after navigation. */
+    /** Resets the registration success flag after it has been handled by the UI. */
     fun consumeRegistrationSuccess() {
         uiState = uiState.copy(isRegistrationSuccessful = false)
     }

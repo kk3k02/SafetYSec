@@ -1,30 +1,30 @@
 package pt.a2025121082.isec.safetysec.data.model
 
 /**
- * UI state for authentication flows (login / registration / password reset / MFA).
+ * UI state for authentication flows (login / registration / password reset / account updates).
  *
- * Used by the ViewModel to expose the current authentication status to the UI.
+ * This state is used by the AuthViewModel to expose the current status 
+ * of authentication operations to the UI components.
  */
 data class AuthState(
-
-    /** True when an authentication-related operation is in progress. */
+    /** Indicates if a network request or background auth operation is currently running. */
     val isLoading: Boolean = false,
 
-    /** True when the registration process finished successfully. */
+    /** Indicates if the registration process completed successfully. */
     val isRegistrationSuccessful: Boolean = false,
 
-    /** True when the user is currently authenticated (logged in). */
+    /** Indicates if the user is currently signed in and has a valid session. */
     val isAuthenticated: Boolean = false,
 
-    /** Optional error message to display in the UI. */
+    /** Stores an error message if an operation (like login) fails. */
     val error: String? = null,
 
-    /** Optional informational message to display in the UI (e.g., success confirmation). */
+    /** Stores a success or informational message for the user. */
     val message: String? = null,
 
-    /** Optional display name of the currently authenticated account (if available). */
+    /** The display name of the currently authenticated user. */
     val accountName: String? = null,
 
-    /** Optional email of the currently authenticated account (if available). */
+    /** The email address of the currently authenticated user. */
     val accountEmail: String? = null
 )

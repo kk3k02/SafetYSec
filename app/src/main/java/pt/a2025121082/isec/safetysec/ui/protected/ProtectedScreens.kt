@@ -58,7 +58,8 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 /**
- * Protected history screen.
+ * Screen displaying the history of alerts triggered by the protected user.
+ * Allows users to review past events and watch evidence videos if available.
  */
 @Composable
 fun ProtectedHistoryScreen(vm: AppViewModel) {
@@ -66,6 +67,7 @@ fun ProtectedHistoryScreen(vm: AppViewModel) {
     val sdf = remember { SimpleDateFormat("HH:mm:ss dd/MM", Locale.getDefault()) }
     var selectedAlertForVideo by remember { mutableStateOf<Alert?>(null) }
 
+    // Refresh alert history when user profile is available
     LaunchedEffect(st.me?.uid) {
         if (st.me?.uid != null) {
             vm.refreshMyAlertsHistory()
@@ -78,6 +80,7 @@ fun ProtectedHistoryScreen(vm: AppViewModel) {
             .padding(horizontal = 16.dp)
     ) {
         if (st.myAlerts.isEmpty()) {
+            // Placeholder when no alerts are found
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(
@@ -91,6 +94,7 @@ fun ProtectedHistoryScreen(vm: AppViewModel) {
                 }
             }
         } else {
+            // List of historical alert items
             LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier.fillMaxSize()
@@ -108,6 +112,7 @@ fun ProtectedHistoryScreen(vm: AppViewModel) {
         }
     }
 
+    // Playback dialog for evidence video
     selectedAlertForVideo?.let { alert ->
         alert.videoUrl?.let { videoUrl ->
             VideoPlaybackDialog(
@@ -118,6 +123,10 @@ fun ProtectedHistoryScreen(vm: AppViewModel) {
     }
 }
 
+/**
+ * Individual item in the alert history list.
+ * Displays alert type, status, time, and location summary.
+ */
 @Composable
 fun AlertHistoryItem(alert: Alert, sdf: SimpleDateFormat, onClick: () -> Unit) {
     val isCancelled = alert.status == "CANCELLED"
@@ -135,6 +144,7 @@ fun AlertHistoryItem(alert: Alert, sdf: SimpleDateFormat, onClick: () -> Unit) {
     ) {
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
+                // Icon box indicating alert status
                 Box(
                     modifier = Modifier
                         .size(40.dp)
@@ -166,6 +176,7 @@ fun AlertHistoryItem(alert: Alert, sdf: SimpleDateFormat, onClick: () -> Unit) {
                     )
                 }
 
+                // Show video icon if evidence is available
                 if (hasVideo) {
                     Icon(
                         Icons.Default.PlayCircle,
@@ -182,6 +193,7 @@ fun AlertHistoryItem(alert: Alert, sdf: SimpleDateFormat, onClick: () -> Unit) {
                 )
             }
 
+            // Location details if present
             if (alert.location != null) {
                 Spacer(Modifier.height(12.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -203,6 +215,9 @@ fun AlertHistoryItem(alert: Alert, sdf: SimpleDateFormat, onClick: () -> Unit) {
     }
 }
 
+/**
+ * Dialog for playing evidence videos using ExoPlayer.
+ */
 @Composable
 fun VideoPlaybackDialog(videoUrl: String, onDismiss: () -> Unit) {
     val context = LocalContext.current
@@ -241,6 +256,7 @@ fun VideoPlaybackDialog(videoUrl: String, onDismiss: () -> Unit) {
                     }
                 }
                 Spacer(Modifier.height(16.dp))
+                // Video player container
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -272,6 +288,7 @@ fun VideoPlaybackDialog(videoUrl: String, onDismiss: () -> Unit) {
 
 /**
  * Screen for managing time windows when monitoring rules are allowed to be active.
+ * Defines when protection services are operational.
  */
 @Composable
 fun ProtectedWindowsScreen(vm: AppViewModel) {
@@ -280,6 +297,7 @@ fun ProtectedWindowsScreen(vm: AppViewModel) {
     var showRemovalSuccessDialog by remember { mutableStateOf(false) }
     var showAdditionSuccessDialog by remember { mutableStateOf(false) }
 
+    // React to success signals from ViewModel
     LaunchedEffect(st.isRemovalSuccessful) {
         if (st.isRemovalSuccessful) showRemovalSuccessDialog = true
     }
@@ -312,6 +330,7 @@ fun ProtectedWindowsScreen(vm: AppViewModel) {
         }
     }
 
+    // Overlay to define a new time window
     if (showAddDialog) {
         AddTimeWindowDialog(
             onDismiss = { showAddDialog = false },
@@ -322,6 +341,7 @@ fun ProtectedWindowsScreen(vm: AppViewModel) {
         )
     }
 
+    // Feedback dialogs
     if (showAdditionSuccessDialog) {
         AlertDialog(
             onDismissRequest = {
@@ -357,6 +377,9 @@ fun ProtectedWindowsScreen(vm: AppViewModel) {
     }
 }
 
+/**
+ * Visual card representing a defined protection time window.
+ */
 @Composable
 fun TimeWindowCard(window: TimeWindow, onRemove: () -> Unit) {
     Card(modifier = Modifier.fillMaxWidth()) {
@@ -376,6 +399,9 @@ fun TimeWindowCard(window: TimeWindow, onRemove: () -> Unit) {
     }
 }
 
+/**
+ * Dialog for selecting days and hour range for a new protection window.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddTimeWindowDialog(onDismiss: () -> Unit, onSave: (List<Int>, Int, Int) -> Unit) {
@@ -392,6 +418,7 @@ fun AddTimeWindowDialog(onDismiss: () -> Unit, onSave: (List<Int>, Int, Int) -> 
                 Text("Select Days:", style = MaterialTheme.typography.labelLarge)
                 Spacer(Modifier.height(8.dp))
 
+                // Grid of day selection chips
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         (1..4).forEach { day ->
@@ -418,6 +445,7 @@ fun AddTimeWindowDialog(onDismiss: () -> Unit, onSave: (List<Int>, Int, Int) -> 
                 }
 
                 Spacer(Modifier.height(24.dp))
+                // Time range selection slider
                 Text(
                     "Active Hours: ${timeRange.start.toInt()}:00 - ${timeRange.endInclusive.toInt()}:00",
                     style = MaterialTheme.typography.labelLarge
@@ -446,7 +474,8 @@ fun AddTimeWindowDialog(onDismiss: () -> Unit, onSave: (List<Int>, Int, Int) -> 
 }
 
 /**
- * Screen for managing linked Monitors and authorizing monitoring permissions.
+ * Screen for managing linked Monitors and authorizing monitoring permissions (Rules).
+ * Includes generation of association codes and management of monitor requests.
  */
 @Composable
 fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
@@ -460,6 +489,7 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
     var geofenceBaseLocation by remember { mutableStateOf<GeoPoint?>(null) }
     val scope = rememberCoroutineScope()
 
+    /** Helper function to format rule labels based on their parameters. */
     fun ruleLabel(type: RuleType, bundle: MonitorRulesBundle?): String {
         val base = type.displayName()
         if (bundle == null) return base
@@ -494,6 +524,7 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
         if (st.isRemovalSuccessful) showRemovalSuccessDialog = true
     }
 
+    // Monitor background rule requests that haven't been shown yet
     LaunchedEffect(st.monitorRuleBundles, st.myLinkedMonitors, st.shownRuleRequestKeys) {
         st.myLinkedMonitors.forEach { monitor ->
             val bundle = st.monitorRuleBundles.find { it.monitorId == monitor.uid }
@@ -511,6 +542,7 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
         }
     }
 
+    // Trigger OTP display when generated
     LaunchedEffect(st.myOtp) {
         if (st.myOtp != null) {
             otpToShow = st.myOtp
@@ -518,6 +550,7 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
         }
     }
 
+    // Capture location for geofencing if a request is pending
     LaunchedEffect(pendingRequestMonitor) {
         val requiresGeofence = pendingRequestMonitor?.second?.any { it.type == RuleType.GEOFENCE } == true
         geofenceBaseLocation = if (requiresGeofence) {
@@ -532,6 +565,7 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         item {
+            // Button to initiate linking process
             Button(
                 onClick = { vm.generateOtp() },
                 modifier = Modifier.fillMaxWidth(),
@@ -545,6 +579,7 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
         if (st.myLinkedMonitors.isEmpty()) {
             item { Text("No monitors linked.", style = MaterialTheme.typography.bodyMedium, color = Color.Gray) }
         } else {
+            // List each monitor and their authorized permissions
             items(st.myLinkedMonitors) { monitor ->
                 val bundle = st.monitorRuleBundles.find { it.monitorId == monitor.uid }
                 Card(
@@ -569,6 +604,7 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
                         HorizontalDivider(Modifier.padding(vertical = 12.dp))
                         Text("Grant Permissions:", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
 
+                        // Permission toggle switches for each rule type
                         grantableRules.forEach { type ->
                             Row(
                                 Modifier.fillMaxWidth(),
@@ -599,11 +635,13 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
             }
         }
         item {
+            // Display errors if any
             st.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp)) }
         }
         item { Spacer(Modifier.height(16.dp)) }
     }
 
+    // Global feedback dialogs
     if (showUpdateSuccessDialog) {
         AlertDialog(
             onDismissRequest = { showUpdateSuccessDialog = false },
@@ -615,6 +653,7 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
         )
     }
 
+    // OTP display overlay
     if (showOtpDialog && otpToShow != null) {
         AlertDialog(
             onDismissRequest = {
@@ -665,6 +704,7 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
         )
     }
 
+    // New permission request handling overlay
     pendingRequestMonitor?.let { (monitor, requestedRules) ->
         val requestedTypes = requestedRules.map { it.type }
         val requestKey = remember(monitor.uid, requestedTypes) {
@@ -712,6 +752,7 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
             confirmButton = {
                 Button(onClick = {
                     scope.launch {
+                        // Capture center point for geofence if needed
                         if (requestedTypes.contains(RuleType.GEOFENCE)) {
                             geofenceBaseLocation = vm.getCurrentLocation()
                         }
@@ -728,7 +769,9 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
                         } else {
                             null
                         }
+                        // Validation for geofence center
                         if (requestedTypes.contains(RuleType.GEOFENCE) && geofenceAreas == null) return@launch
+                        
                         vm.saveAuthorizations(monitor.uid, requestedTypes, inactivityMin, geofenceAreas)
                         vm.markRuleRequestHandled(requestKey)
                         pendingRequestMonitor = null
@@ -746,7 +789,7 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
 }
 
 /**
- * Protected profile screen.
+ * Screen for managing the protected user's profile and security settings (PIN, password).
  */
 @Composable
 fun ProtectedProfileScreen(
@@ -758,6 +801,8 @@ fun ProtectedProfileScreen(
     val authSt = authVm.uiState
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    
+    // UI input states
     var inactivityMin by remember(st.inactivityDurationMin) { mutableStateOf(st.inactivityDurationMin.toString()) }
     var showSecurityPopup by remember { mutableStateOf(false) }
     var securityPopupMessage by remember { mutableStateOf("Your security settings (PIN and inactivity duration) have been successfully updated.") }
@@ -786,6 +831,7 @@ fun ProtectedProfileScreen(
     }
 
     LaunchedEffect(authSt.message) {
+        // Clear forms and show success overlays upon success
         if (authSt.message == "Password changed successfully.") {
             showPasswordDialog = false
             currentPassword = ""
@@ -812,6 +858,7 @@ fun ProtectedProfileScreen(
             )
     ) {
         Spacer(Modifier.height(8.dp))
+        // Summary of current account data
         Card(modifier = Modifier.fillMaxWidth()) {
             Row(
                 modifier = Modifier.padding(16.dp),
@@ -834,6 +881,7 @@ fun ProtectedProfileScreen(
         Text("Security Settings", style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(8.dp))
 
+        // Security management actions
         Button(
             onClick = {
                 oldPin = ""
@@ -860,10 +908,14 @@ fun ProtectedProfileScreen(
         Spacer(Modifier.height(24.dp))
         Button(onClick = onSwitchToMonitor, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)) { Text("Switch to Monitor Mode") }
 
+        // General error displays
         authSt.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp)) }
         st.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp)) }
     }
 
+    // --- Setting Overlays ---
+
+    // PIN Update Overlay
     if (showPinDialog) {
         AlertDialog(
             onDismissRequest = { showPinDialog = false },
@@ -956,6 +1008,7 @@ fun ProtectedProfileScreen(
         )
     }
 
+    // Name Update Overlay
     if (showEditNameDialog) {
         AlertDialog(
             onDismissRequest = { showEditNameDialog = false },
@@ -998,6 +1051,7 @@ fun ProtectedProfileScreen(
         )
     }
 
+    // Password Update Overlay
     if (showPasswordDialog) {
         AlertDialog(
             onDismissRequest = { showPasswordDialog = false },
@@ -1107,6 +1161,7 @@ fun ProtectedProfileScreen(
         )
     }
 
+    // Informative Success Feedback Dialogs
     if (showPasswordSuccessDialog) {
         AlertDialog(
             onDismissRequest = {
@@ -1161,11 +1216,17 @@ fun ProtectedProfileScreen(
     }
 }
 
+/**
+ * Overlay dialog presented when an alert has been triggered but not yet sent.
+ * Gives the protected user a chance to cancel by entering their PIN.
+ * Includes haptic feedback (vibration) for emphasis.
+ */
 @Composable
 fun ProtectedCancelAlertDialog(vm: AppViewModel) {
     val st = vm.state
     val context = LocalContext.current
 
+    // Trigger vibration feedback while the cancel window is active
     LaunchedEffect(st.isCancelWindowOpen) {
         if (st.isCancelWindowOpen) {
             val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -1206,12 +1267,13 @@ fun ProtectedCancelAlertDialog(vm: AppViewModel) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
                     Text("An emergency alert is about to be sent.")
                     Spacer(Modifier.height(16.dp))
+                    // Countdown timer visualization
                     Text(text = formatTime(st.cancelSecondsLeft), style = MaterialTheme.typography.displayMedium, fontWeight = FontWeight.ExtraBold, color = if (st.cancelSecondsLeft <= 3) Color.Red else MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.height(16.dp))
                     Text("Enter PIN to cancel:", style = MaterialTheme.typography.bodyMedium)
                     Spacer(Modifier.height(8.dp))
 
-                    // PIN input with error state
+                    // PIN entry field with validation feedback
                     OutlinedTextField(
                         value = typed,
                         onValueChange = { typed = it },
@@ -1223,7 +1285,7 @@ fun ProtectedCancelAlertDialog(vm: AppViewModel) {
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                     )
 
-                    // Display PIN error message if present
+                    // Specific PIN error message
                     st.cancelPinError?.let { errorMsg ->
                         Text(
                             text = errorMsg,
@@ -1245,4 +1307,3 @@ fun ProtectedCancelAlertDialog(vm: AppViewModel) {
         )
     }
 }
-

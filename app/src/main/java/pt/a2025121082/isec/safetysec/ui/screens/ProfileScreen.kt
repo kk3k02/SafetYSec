@@ -17,10 +17,12 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import pt.a2025121082.isec.safetysec.viewmodel.AuthViewModel
 
 /**
- * Screen for managing the user profile:
- * - View/Edit name
- * - View/Edit email (requires current password for re-authentication)
- * - Change password (requires current password)
+ * Screen for managing the user profile.
+ * 
+ * Features:
+ * - View and edit display name.
+ * - View and edit email address (requires current password for re-authentication).
+ * - Change account password (requires current password and confirmation).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -31,20 +33,23 @@ fun ProfileScreen(
     val uiState = viewModel.uiState
     val scrollState = rememberScrollState()
 
-    // Form states
+    // Form states for profile information
     var name by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
+    
+    // State for re-authentication password during email change
     var currentPasswordForProfile by remember { mutableStateOf("") }
 
+    // States for the password change form
     var currentPasswordForPwdChange by remember { mutableStateOf("") }
     var newPassword by remember { mutableStateOf("") }
     var confirmNewPassword by remember { mutableStateOf("") }
 
-    // Dialog control
+    // Visibility control for dialogs
     var showEmailChangeDialog by remember { mutableStateOf(false) }
     var showPasswordChangeDialog by remember { mutableStateOf(false) }
 
-    // Initialize fields when account info is loaded
+    // Sync local form states with data from the ViewModel when it becomes available
     LaunchedEffect(uiState.accountName, uiState.accountEmail) {
         if (name.isEmpty() && uiState.accountName != null) {
             name = uiState.accountName
@@ -54,7 +59,7 @@ fun ProfileScreen(
         }
     }
 
-    // Refresh data on entry
+    // Trigger data loading when the screen is first displayed
     LaunchedEffect(Unit) {
         viewModel.loadAccountInfo()
     }
@@ -80,7 +85,7 @@ fun ProfileScreen(
                 .verticalScroll(scrollState),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Error/Message Display
+            // Display feedback messages from the ViewModel (Errors/Success)
             if (uiState.error != null) {
                 Text(
                     text = uiState.error,
@@ -91,7 +96,7 @@ fun ProfileScreen(
             if (uiState.message != null) {
                 Text(
                     text = uiState.message,
-                    color = Color(0xFF4CAF50), // Green
+                    color = Color(0xFF4CAF50), // Standard Green for success
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
             }
@@ -129,9 +134,11 @@ fun ProfileScreen(
 
                     Button(
                         onClick = {
+                            // If email changed, we need a password confirmation dialog first
                             if (email != uiState.accountEmail) {
                                 showEmailChangeDialog = true
                             } else {
+                                // Otherwise, just update the name
                                 viewModel.updateProfile(name, email, null)
                             }
                         },
@@ -141,47 +148,50 @@ fun ProfileScreen(
                         Text("Update Profile")
                     }
                 }
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 16.dp),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text(
-                            text = "Security",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
+            }
 
-                        Button(
-                            onClick = { showPasswordChangeDialog = true },
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                                contentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                            )
-                        ) {
-                            Icon(Icons.Default.Lock, contentDescription = null)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Change Password")
-                        }
+            // --- Security / Change Password Section ---
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 16.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "Security",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Button(
+                        onClick = { showPasswordChangeDialog = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                    ) {
+                        Icon(Icons.Default.Lock, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Change Password")
                     }
                 }
             }
         }
 
-        // --- Dialogs ---
+        // --- Overlay Dialogs ---
 
-        // Email Change Confirmation Dialog (Requires current password)
+        // Email Change Confirmation Dialog
+        // Changing email in Firebase is a sensitive operation and requires recent re-authentication
         if (showEmailChangeDialog) {
             AlertDialog(
                 onDismissRequest = { showEmailChangeDialog = false },
                 title = { Text("Confirm Email Change") },
                 text = {
                     Column {
-                        Text("Changing your email address requires re-authentication. Please enter your current password.")
+                        Text("Changing your email address requires re-authentication. Please enter your current password to proceed.")
                         Spacer(modifier = Modifier.height(16.dp))
                         OutlinedTextField(
                             value = currentPasswordForProfile,
@@ -212,6 +222,7 @@ fun ProfileScreen(
         }
 
         // Password Change Dialog
+        // Collects current password and new password (with confirmation)
         if (showPasswordChangeDialog) {
             AlertDialog(
                 onDismissRequest = { showPasswordChangeDialog = false },
@@ -249,11 +260,10 @@ fun ProfileScreen(
                             if (newPassword == confirmNewPassword) {
                                 viewModel.changePassword(currentPasswordForPwdChange, newPassword)
                                 showPasswordChangeDialog = false
+                                // Clear temporary password states for security
                                 currentPasswordForPwdChange = ""
                                 newPassword = ""
                                 confirmNewPassword = ""
-                            } else {
-                                // Local error check could be added here
                             }
                         }
                     ) {
@@ -267,4 +277,5 @@ fun ProfileScreen(
                 }
             )
         }
-    }}
+    }
+}

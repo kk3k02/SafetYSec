@@ -38,14 +38,13 @@ import kotlinx.coroutines.launch
 import pt.a2025121082.isec.safetysec.viewmodel.AuthViewModel
 
 /**
- * Registration screen (Jetpack Compose).
- *
+ * Registration screen for new users.
+ * 
  * Responsibilities:
- * - Collect registration data (name, email, password)
- * - Perform basic client-side validation
- * - Trigger registration via AuthViewModel
- * - Show errors/messages using Snackbars
- * - Navigate back to Login after successful registration
+ * - Collect registration details: Name, Email, and Password.
+ * - Perform basic client-side validation (non-empty fields, password length).
+ * - Communicate with [AuthViewModel] to handle the Firebase registration process.
+ * - Provide user feedback via Snackbars for both local validation and remote errors.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -53,21 +52,21 @@ fun RegistrationScreen(
     viewModel: AuthViewModel,
     onNavigateToLogin: () -> Unit
 ) {
-    /** Local UI state for input fields (survives configuration changes). */
+    /** Local state for input fields using rememberSaveable to survive configuration changes like rotation. */
     var name by rememberSaveable { mutableStateOf("") }
     var email by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
 
-    /** UI state exposed by the ViewModel. */
+    /** Observe the current authentication state from the ViewModel. */
     val state = viewModel.uiState
 
-    /** Snackbar host to show one-off messages (errors, confirmations). */
+    /** State used by the Scaffold to manage Snackbar notifications. */
     val snackbarHostState = remember { SnackbarHostState() }
 
-    /** Coroutine scope for showing snackbars from local validation. */
+    /** Coroutine scope to trigger Snackbar messages from within local validation logic. */
     val scope = rememberCoroutineScope()
 
-    // Show error in a snackbar and clear it in the ViewModel.
+    // Listen for error changes in the ViewModel and display them in a Snackbar
     LaunchedEffect(state.error) {
         val err = state.error
         if (!err.isNullOrBlank()) {
@@ -76,7 +75,7 @@ fun RegistrationScreen(
         }
     }
 
-    // Show informational message in a snackbar and clear it in the ViewModel.
+    // Listen for general messages (e.g., "Verification email sent") and display them
     LaunchedEffect(state.message) {
         val msg = state.message
         if (!msg.isNullOrBlank()) {
@@ -85,18 +84,17 @@ fun RegistrationScreen(
         }
     }
 
-    // After successful registration -> navigate to login (and consume the flag).
+    // React to successful registration by navigating back to the login screen
     LaunchedEffect(state.isRegistrationSuccessful) {
         if (state.isRegistrationSuccessful) {
-            // If the VM sets something like "Verify email..." it will be shown via snackbar as well.
             viewModel.consumeRegistrationSuccess()
             onNavigateToLogin()
         }
     }
 
     /**
-     * Performs basic validation and triggers registration.
-     * Validation messages are shown locally via Snackbar.
+     * Validates user input locally before calling the ViewModel registration logic.
+     * Displays a snackbar if validation fails.
      */
     fun validateAndRegister() {
         val n = name.trim()
@@ -113,8 +111,12 @@ fun RegistrationScreen(
     }
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("SafetYSec") }) },
-        snackbarHost = { SnackbarHost(snackbarHostState) }
+        topBar = { 
+            TopAppBar(title = { Text("SafetYSec") }) 
+        },
+        snackbarHost = { 
+            SnackbarHost(snackbarHostState) 
+        }
     ) { innerPadding ->
 
         Column(
@@ -125,10 +127,14 @@ fun RegistrationScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Text("Create account", style = MaterialTheme.typography.headlineMedium)
+            Text(
+                text = "Create account", 
+                style = MaterialTheme.typography.headlineMedium
+            )
+            
             Spacer(Modifier.height(32.dp))
 
-            // Name input
+            // User Name Input
             OutlinedTextField(
                 value = name,
                 onValueChange = { name = it },
@@ -143,7 +149,7 @@ fun RegistrationScreen(
 
             Spacer(Modifier.height(16.dp))
 
-            // Email input
+            // User Email Input
             OutlinedTextField(
                 value = email,
                 onValueChange = { email = it },
@@ -158,7 +164,7 @@ fun RegistrationScreen(
 
             Spacer(Modifier.height(16.dp))
 
-            // Password input
+            // User Password Input (hidden text)
             OutlinedTextField(
                 value = password,
                 onValueChange = { password = it },
@@ -171,7 +177,6 @@ fun RegistrationScreen(
                     imeAction = ImeAction.Done
                 ),
                 keyboardActions = KeyboardActions(
-                    // Submit from keyboard "Done"
                     onDone = {
                         if (!state.isLoading) validateAndRegister()
                     }
@@ -180,13 +185,14 @@ fun RegistrationScreen(
 
             Spacer(Modifier.height(24.dp))
 
-            // Register button
+            // Primary Registration Action Button
             Button(
                 onClick = { validateAndRegister() },
                 enabled = !state.isLoading,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 if (state.isLoading) {
+                    // Show loading indicator during remote operation
                     CircularProgressIndicator(
                         strokeWidth = 2.dp,
                         modifier = Modifier
@@ -201,7 +207,7 @@ fun RegistrationScreen(
 
             Spacer(Modifier.height(12.dp))
 
-            // Navigate back to login.
+            // Option to navigate back to the Login screen
             TextButton(
                 onClick = onNavigateToLogin,
                 enabled = !state.isLoading

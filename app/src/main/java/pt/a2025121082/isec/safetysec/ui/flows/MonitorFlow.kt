@@ -23,6 +23,11 @@ import pt.a2025121082.isec.safetysec.ui.monitor.MonitorProfileScreen
 import pt.a2025121082.isec.safetysec.ui.monitor.MonitorRulesScreen
 import pt.a2025121082.isec.safetysec.viewmodel.AppViewModel
 
+/**
+ * Main navigation flow for users in the "Monitor" role.
+ * This composable manages internal navigation for supervisors, 
+ * including the dashboard, account linking, and rule configuration.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MonitorFlow(
@@ -35,12 +40,16 @@ fun MonitorFlow(
     val entry by nav.currentBackStackEntryAsState()
     val currentRoute = entry?.destination?.route
 
-    LaunchedEffect(Unit) { appViewModel.setActiveMode(pt.a2025121082.isec.safetysec.viewmodel.AppMode.MONITOR) }
+    // Set the application mode to MONITOR when this flow is active
+    LaunchedEffect(Unit) { 
+        appViewModel.setActiveMode(pt.a2025121082.isec.safetysec.viewmodel.AppMode.MONITOR) 
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
+                    // Update TopAppBar title based on the active destination
                     val title = when (currentRoute) {
                         MRoutes.Dash -> "Monitor Dashboard"
                         MRoutes.Link -> "Link Accounts"
@@ -51,6 +60,7 @@ fun MonitorFlow(
                     Text(title)
                 },
                 actions = {
+                    // Global logout button
                     IconButton(onClick = onLogout) {
                         Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = "Logout")
                     }
@@ -58,10 +68,12 @@ fun MonitorFlow(
             )
         },
         bottomBar = {
+            // Main navigation tabs for the Monitor flow
             NavigationBar {
                 val dest = entry?.destination
                 fun go(route: String) {
                     nav.navigate(route) {
+                        // Avoid building up a large stack of destinations
                         popUpTo(nav.graph.findStartDestination().id) { saveState = true }
                         restoreState = true
                         launchSingleTop = true
@@ -99,6 +111,7 @@ fun MonitorFlow(
         }
     ) { innerPadding ->
         Box(Modifier.padding(innerPadding)) {
+            // Internal Navigation Host for Monitor-specific screens
             NavHost(navController = nav, startDestination = MRoutes.Dash) {
                 composable(MRoutes.Dash) { MonitorDashboardScreen(appViewModel) }
                 composable(MRoutes.Link) { MonitorLinkScreen(appViewModel) }
@@ -109,6 +122,9 @@ fun MonitorFlow(
     }
 }
 
+/**
+ * Route constants for the Monitor user flow.
+ */
 private object MRoutes {
     const val Dash = "m_dash"
     const val Link = "m_link"
