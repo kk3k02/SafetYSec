@@ -735,12 +735,16 @@ class AppViewModel @Inject constructor(
         inactivityJob = viewModelScope.launch {
             while (true) {
                 delay(1000)
-                if (state.activeMode == AppMode.PROTECTED && state.inactivityAuthorized && state.inactivityDurationMin > 0) {
-                    state = state.copy(userInactivitySeconds = state.userInactivitySeconds + 1)
-                    if (state.userInactivitySeconds >= state.inactivityDurationMin * 60) {
-                        triggerInactivityAlert()
-                        resetInactivityTimer()
-                    }
+        if (state.activeMode == AppMode.PROTECTED && state.inactivityAuthorized && state.inactivityDurationMin > 0) {
+            if (!isWithinAnyWindow(state.timeWindows)) {
+                state = state.copy(userInactivitySeconds = 0)
+                continue
+            }
+            state = state.copy(userInactivitySeconds = state.userInactivitySeconds + 1)
+            if (state.userInactivitySeconds >= state.inactivityDurationMin * 60) {
+                triggerInactivityAlert()
+                resetInactivityTimer()
+            }
                 } else { state = state.copy(userInactivitySeconds = 0) }
             }
         }
@@ -918,6 +922,10 @@ class AppViewModel @Inject constructor(
             lastSpeedOverLimit = null
             pendingInitialSpeedAlert = false
             Log.d("SpeedMonitor", "skip: no maxSpeed")
+            return
+        }
+        if (!isWithinAnyWindow(state.timeWindows)) {
+            Log.d("SpeedMonitor", "skip: outside window")
             return
         }
 
