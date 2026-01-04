@@ -13,12 +13,27 @@ class MonitoringRepository @Inject constructor(
         firestore.collection("users").document(protectedUid)
             .collection("rulesByMonitor").document(monitorUid)
 
-    suspend fun saveAuthorizations(protectedUid: String, monitorUid: String, authorized: List<RuleType>, inactivityMin: Int?) {
+    suspend fun saveAuthorizations(
+        protectedUid: String,
+        monitorUid: String,
+        authorized: List<RuleType>,
+        inactivityMin: Int?,
+        geofenceAreas: List<GeofenceArea>?
+    ) {
         val data = mutableMapOf<String, Any>(
             "authorizedTypes" to authorized.map { it.name }
         )
         if (inactivityMin != null) {
             data["inactivityDuration"] = inactivityMin
+        }
+        if (geofenceAreas != null) {
+            data["geofenceAreas"] = geofenceAreas.map {
+                mapOf(
+                    "latitude" to it.latitude,
+                    "longitude" to it.longitude,
+                    "radiusMeters" to it.radiusMeters
+                )
+            }
         }
         ruleDoc(protectedUid, monitorUid).set(data, SetOptions.merge()).await()
     }
@@ -28,6 +43,15 @@ class MonitoringRepository @Inject constructor(
             .collection("rulesByMonitor").get().await()
 
         return qs.documents.map { d ->
+            val storedAreas = (d.get("geofenceAreas") as? List<*>)
+                ?.mapNotNull { it as? Map<*, *> }
+                ?.mapNotNull {
+                    val lat = (it["latitude"] as? Number)?.toDouble() ?: return@mapNotNull null
+                    val lon = (it["longitude"] as? Number)?.toDouble() ?: return@mapNotNull null
+                    val radius = (it["radiusMeters"] as? Number)?.toDouble() ?: return@mapNotNull null
+                    GeofenceArea(latitude = lat, longitude = lon, radiusMeters = radius)
+                }
+
             val requested = (d.get("requested") as? List<*>)
                 ?.mapNotNull { it as? Map<*, *> }
                 ?.mapNotNull {
@@ -36,7 +60,9 @@ class MonitoringRepository @Inject constructor(
                     val paramsMap = it["params"] as? Map<*, *>
                     val params = RuleParams(
                         maxSpeed = (paramsMap?.get("maxSpeed") as? Number)?.toFloat(),
-                        inactivityDurationMin = (paramsMap?.get("inactivityDurationMin") as? Number)?.toInt()
+                        inactivityDurationMin = (paramsMap?.get("inactivityDurationMin") as? Number)?.toInt(),
+                        geofenceAreas = if (type == RuleType.GEOFENCE) storedAreas else null,
+                        geofenceRadiusMeters = (paramsMap?.get("geofenceRadiusMeters") as? Number)?.toDouble()
                     )
                     MonitoringRule(type = type, params = params)
                 } ?: emptyList()
@@ -58,7 +84,17 @@ class MonitoringRepository @Inject constructor(
     }
     
     suspend fun requestRules(protectedUid: String, monitorUid: String, rules: List<MonitoringRule>) {
-        val rulesMapList = rules.map { mapOf("type" to it.type.name, "enabled" to it.enabled, "params" to mapOf("maxSpeed" to it.params.maxSpeed, "inactivityDurationMin" to it.params.inactivityDurationMin)) }
+        val rulesMapList = rules.map {
+            mapOf(
+                "type" to it.type.name,
+                "enabled" to it.enabled,
+                "params" to mapOf(
+                    "maxSpeed" to it.params.maxSpeed,
+                    "inactivityDurationMin" to it.params.inactivityDurationMin,
+                    "geofenceRadiusMeters" to it.params.geofenceRadiusMeters
+                )
+            )
+        }
         ruleDoc(protectedUid, monitorUid).set(mapOf("requested" to rulesMapList), SetOptions.merge()).await()
     }
 }

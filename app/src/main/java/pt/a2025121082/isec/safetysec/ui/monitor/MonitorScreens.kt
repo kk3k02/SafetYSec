@@ -384,6 +384,31 @@ fun MonitorRulesScreen(vm: AppViewModel) {
         if (selectedUser != null) {
             item {
                 st.rulesForSelectedProtected?.let { bundle ->
+                    fun ruleLabel(type: RuleType): String {
+                        val base = type.displayName()
+                        val rule = bundle.requested.firstOrNull { it.type == type }
+                        return when (type) {
+                            RuleType.PROLONGED_INACTIVITY -> {
+                                val min = rule?.params?.inactivityDurationMin
+                                if (min != null) "$base ($min min)" else base
+                            }
+                            RuleType.GEOFENCE -> {
+                                val areas = rule?.params?.geofenceAreas
+                                if (areas.isNullOrEmpty()) base else {
+                                    if (areas.size == 1) {
+                                        val a = areas.first()
+                                        val lat = String.format(Locale.getDefault(), "%.5f", a.latitude)
+                                        val lon = String.format(Locale.getDefault(), "%.5f", a.longitude)
+                                        "$base ($lat, $lon, ${a.radiusMeters.toInt()} m)"
+                                    } else {
+                                        "$base (${areas.size} areas)"
+                                    }
+                                }
+                            }
+                            else -> base
+                        }
+                    }
+
                     Card(
                         modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
@@ -401,7 +426,7 @@ fun MonitorRulesScreen(vm: AppViewModel) {
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
-                                        text = type.displayName(),
+                                        text = ruleLabel(type),
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = Color.Unspecified
                                     )
@@ -492,8 +517,6 @@ fun RequestRulesDialog(
 
     var maxSpeed by remember { mutableStateOf("") }
     var inactMin by remember { mutableStateOf("") }
-    var geoLat by remember { mutableStateOf("") }
-    var geoLng by remember { mutableStateOf("") }
     var geoRadius by remember { mutableStateOf("") }
 
     AlertDialog(
@@ -535,23 +558,7 @@ fun RequestRulesDialog(
                     )
                 }
                 if (geofence) {
-                    Text("Geofence Area", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 8.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedTextField(
-                            value = geoLat,
-                            onValueChange = { geoLat = it },
-                            label = { Text("Lat") },
-                            modifier = Modifier.weight(1f),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                        )
-                        OutlinedTextField(
-                            value = geoLng,
-                            onValueChange = { geoLng = it },
-                            label = { Text("Lng") },
-                            modifier = Modifier.weight(1f),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                        )
-                    }
+                    Text("Geofence Radius", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 8.dp))
                     OutlinedTextField(
                         value = geoRadius,
                         onValueChange = { geoRadius = it },
@@ -575,13 +582,7 @@ fun RequestRulesDialog(
                 val params = RuleParams(
                     maxSpeed = maxSpeed.toFloatOrNull(),
                     inactivityDurationMin = inactMin.toIntOrNull(),
-                    geofenceAreas = if (geofence) listOf(
-                        GeofenceArea(
-                            geoLat.toDoubleOrNull() ?: 0.0,
-                            geoLng.toDoubleOrNull() ?: 0.0,
-                            geoRadius.toDoubleOrNull() ?: 0.0
-                        )
-                    ) else null
+                    geofenceRadiusMeters = if (geofence) geoRadius.toDoubleOrNull() else null
                 )
                 onSend(types, params)
             }) {

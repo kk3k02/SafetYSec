@@ -40,10 +40,14 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.delay
 import pt.a2025121082.isec.safetysec.data.model.Alert
+import com.google.firebase.firestore.GeoPoint
+import kotlinx.coroutines.launch
+import pt.a2025121082.isec.safetysec.data.model.GeofenceArea
 import pt.a2025121082.isec.safetysec.data.model.MonitoringRule
 import pt.a2025121082.isec.safetysec.data.model.RuleType
 import pt.a2025121082.isec.safetysec.data.model.TimeWindow
 import pt.a2025121082.isec.safetysec.data.model.User
+import pt.a2025121082.isec.safetysec.data.repository.MonitorRulesBundle
 import pt.a2025121082.isec.safetysec.viewmodel.AppViewModel
 import pt.a2025121082.isec.safetysec.viewmodel.AuthViewModel
 import java.text.SimpleDateFormat
@@ -441,6 +445,34 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
     var pendingRequestMonitor by remember { mutableStateOf<Pair<User, List<MonitoringRule>>?>(null) }
     var shownRequestKeys by remember { mutableStateOf(setOf<String>()) }
     val grantableRules = remember { RuleType.values().filterNot { it == RuleType.INACTIVITY } }
+    var geofenceBaseLocation by remember { mutableStateOf<GeoPoint?>(null) }
+    val scope = rememberCoroutineScope()
+
+    fun ruleLabel(type: RuleType, bundle: MonitorRulesBundle?): String {
+        val base = type.displayName()
+        if (bundle == null) return base
+        val rule = bundle.requested.firstOrNull { it.type == type }
+        return when (type) {
+            RuleType.PROLONGED_INACTIVITY -> {
+                val min = rule?.params?.inactivityDurationMin
+                if (min != null) "$base ($min min)" else base
+            }
+            RuleType.GEOFENCE -> {
+                val areas = rule?.params?.geofenceAreas
+                if (areas.isNullOrEmpty()) base else {
+                    if (areas.size == 1) {
+                        val a = areas.first()
+                        val lat = String.format(Locale.getDefault(), "%.5f", a.latitude)
+                        val lon = String.format(Locale.getDefault(), "%.5f", a.longitude)
+                        "$base ($lat, $lon, ${a.radiusMeters.toInt()} m)"
+                    } else {
+                        "$base (${areas.size} areas)"
+                    }
+                }
+            }
+            else -> base
+        }
+    }
 
     LaunchedEffect(st.isRemovalSuccessful) {
         if (st.isRemovalSuccessful) showRemovalSuccessDialog = true
@@ -467,6 +499,15 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
         if (st.myOtp != null) {
             otpToShow = st.myOtp
             showOtpDialog = true
+        }
+    }
+
+    LaunchedEffect(pendingRequestMonitor) {
+        val requiresGeofence = pendingRequestMonitor?.second?.any { it.type == RuleType.GEOFENCE } == true
+        geofenceBaseLocation = if (requiresGeofence) {
+            vm.getCurrentLocation()
+        } else {
+            null
         }
     }
 
@@ -519,7 +560,7 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(text = type.displayName(), style = MaterialTheme.typography.bodyMedium)
+                                Text(text = ruleLabel(type, bundle), style = MaterialTheme.typography.bodyMedium)
                                 Switch(
                                     checked = authorized.contains(type),
                                     onCheckedChange = { on -> if (on) authorized.add(type) else authorized.remove(type) }
@@ -529,7 +570,7 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
                         Spacer(Modifier.height(8.dp))
                         Button(
                             onClick = {
-                                vm.saveAuthorizations(monitor.uid, authorized.toList(), null)
+                                vm.saveAuthorizations(monitor.uid, authorized.toList(), null, null)
                                 showUpdateSuccessDialog = true
                             },
                             modifier = Modifier.fillMaxWidth()
@@ -610,6 +651,9 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
         val requestKey = remember(monitor.uid, requestedTypes) {
             monitor.uid + ":" + requestedTypes.sorted().joinToString(",")
         }
+        val geofenceRadius = requestedRules.firstOrNull { it.type == RuleType.GEOFENCE }
+            ?.params?.geofenceRadiusMeters
+        val canAccept = !requestedTypes.contains(RuleType.GEOFENCE) || geofenceBaseLocation != null
         AlertDialog(
             onDismissRequest = {
                 shownRequestKeys = shownRequestKeys + requestKey
@@ -624,10 +668,17 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
                         val minutes = if (type == RuleType.PROLONGED_INACTIVITY) {
                             requestedRules.firstOrNull { it.type == type }?.params?.inactivityDurationMin
                         } else null
-                        val label = if (minutes != null) {
-                            "${type.displayName()} ($minutes min)"
-                        } else {
-                            type.displayName()
+                        val label = when {
+                            type == RuleType.GEOFENCE && geofenceRadius != null && geofenceBaseLocation != null -> {
+                                val lat = String.format(Locale.getDefault(), "%.5f", geofenceBaseLocation!!.latitude)
+                                val lon = String.format(Locale.getDefault(), "%.5f", geofenceBaseLocation!!.longitude)
+                                "${type.displayName()} (${geofenceRadius.toInt()} m) @ $lat, $lon"
+                            }
+                            type == RuleType.GEOFENCE && geofenceRadius != null -> {
+                                "${type.displayName()} (${geofenceRadius.toInt()} m) @ location unavailable"
+                            }
+                            minutes != null -> "${type.displayName()} ($minutes min)"
+                            else -> type.displayName()
                         }
                         Text("- $label", fontWeight = FontWeight.SemiBold)
                     }
@@ -637,12 +688,29 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
             },
             confirmButton = {
                 Button(onClick = {
-                    val inactivityMin = requestedRules.firstOrNull { it.type == RuleType.PROLONGED_INACTIVITY }
-                        ?.params?.inactivityDurationMin
-                    vm.saveAuthorizations(monitor.uid, requestedTypes, inactivityMin)
-                    shownRequestKeys = shownRequestKeys + requestKey
-                    pendingRequestMonitor = null
-                }) { Text("Accept All") }
+                    scope.launch {
+                        if (requestedTypes.contains(RuleType.GEOFENCE)) {
+                            geofenceBaseLocation = vm.getCurrentLocation()
+                        }
+                        val inactivityMin = requestedRules.firstOrNull { it.type == RuleType.PROLONGED_INACTIVITY }
+                            ?.params?.inactivityDurationMin
+                        val geofenceAreas = if (requestedTypes.contains(RuleType.GEOFENCE)) {
+                            val loc = geofenceBaseLocation
+                            val radius = geofenceRadius
+                            if (loc != null && radius != null) {
+                                listOf(GeofenceArea(loc.latitude, loc.longitude, radius))
+                            } else {
+                                null
+                            }
+                        } else {
+                            null
+                        }
+                        if (requestedTypes.contains(RuleType.GEOFENCE) && geofenceAreas == null) return@launch
+                        vm.saveAuthorizations(monitor.uid, requestedTypes, inactivityMin, geofenceAreas)
+                        shownRequestKeys = shownRequestKeys + requestKey
+                        pendingRequestMonitor = null
+                    }
+                }, enabled = canAccept) { Text("Accept All") }
             },
             dismissButton = {
                 TextButton(onClick = {
@@ -860,7 +928,8 @@ fun ProtectedCancelAlertDialog(vm: AppViewModel) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.Warning, contentDescription = null, tint = Color.Red)
                     Spacer(Modifier.width(8.dp))
-                    Text("Alert Triggered!", color = Color.Red, fontWeight = FontWeight.Bold)
+                    val type = st.cancelAlertType?.displayName()?.uppercase(Locale.getDefault()) ?: "ALERT"
+                    Text("$type TRIGGERED!", color = Color.Red, fontWeight = FontWeight.Bold)
                 }
             },
             text = {

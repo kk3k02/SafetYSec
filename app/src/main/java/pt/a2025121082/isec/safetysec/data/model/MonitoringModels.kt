@@ -31,7 +31,8 @@ enum class RuleType {
 data class RuleParams(
     val maxSpeed: Float? = null,
     val inactivityDurationMin: Int? = null,
-    val geofenceAreas: List<GeofenceArea>? = null
+    val geofenceAreas: List<GeofenceArea>? = null,
+    val geofenceRadiusMeters: Double? = null
 )
 
 data class GeofenceArea(

@@ -28,7 +28,12 @@ import pt.a2025121082.isec.safetysec.data.repository.MonitorRulesBundle
 import pt.a2025121082.isec.safetysec.data.repository.MonitoringRepository
 import pt.a2025121082.isec.safetysec.util.FallDetectionService
 import java.io.File
+import java.util.Calendar
 import javax.inject.Inject
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.sin
+import kotlin.math.sqrt
 
 data class AppUiState(
     val me: User? = null,
@@ -49,6 +54,7 @@ data class AppUiState(
     val isAdditionSuccessful: Boolean = false,
     val rulesForSelectedProtected: MonitorRulesBundle? = null,
     val isCancelWindowOpen: Boolean = false,
+    val cancelAlertType: RuleType? = null,
     val cancelSecondsLeft: Int = 0,
     val typedCancelCode: String? = null,
     val cancelPinError: String? = null,
@@ -78,6 +84,7 @@ class AppViewModel @Inject constructor(
         private set
 
     private var inactivityJob: Job? = null
+    private var geofenceJob: Job? = null
     private var recordingTimerJob: Job? = null
     private var recording: Recording? = null
 
@@ -99,6 +106,7 @@ class AppViewModel @Inject constructor(
     )
 
     private var currentAlertIdForRecording: String? = null
+    private var lastGeofenceInside: Boolean? = null
 
     init {
         viewModelScope.launch {
@@ -111,6 +119,8 @@ class AppViewModel @Inject constructor(
     fun setLocationProvider(provider: suspend () -> GeoPoint?) {
         this.locationProvider = provider
     }
+
+    suspend fun getCurrentLocation(): GeoPoint? = locationProvider?.invoke()
 
     @SuppressLint("MissingPermission")
     fun startActualRecording() {
@@ -168,7 +178,14 @@ class AppViewModel @Inject constructor(
         if (!me.roles.contains("Protected") || state.activeMode != AppMode.PROTECTED) return@launch
         if (state.isCancelWindowOpen || state.isRecordingPopupOpen) return@launch
 
-        state = state.copy(isCancelWindowOpen = true, cancelSecondsLeft = 10, typedCancelCode = null, cancelPinError = null, isAlertSent = false)
+        state = state.copy(
+            isCancelWindowOpen = true,
+            cancelAlertType = type,
+            cancelSecondsLeft = 10,
+            typedCancelCode = null,
+            cancelPinError = null,
+            isAlertSent = false
+        )
         val tickerJob = viewModelScope.launch {
             while (state.cancelSecondsLeft > 0) { delay(1000); state = state.copy(cancelSecondsLeft = state.cancelSecondsLeft - 1) }
         }
@@ -181,7 +198,7 @@ class AppViewModel @Inject constructor(
         )
         tickerJob.cancel()
 
-        state = state.copy(isCancelWindowOpen = false, cancelSecondsLeft = 0)
+        state = state.copy(isCancelWindowOpen = false, cancelAlertType = null, cancelSecondsLeft = 0)
 
         if (alertId != null) {
             currentAlertIdForRecording = alertId
@@ -284,6 +301,7 @@ class AppViewModel @Inject constructor(
                         startRulesByMonitorListener(me.uid)
                         viewModelScope.launch { refreshProtectedMetadata(me.uid) }
                         startInactivityTimer()
+                        startGeofenceMonitor()
                     }
 
                     if (isMonitor) {
@@ -334,12 +352,77 @@ class AppViewModel @Inject constructor(
         }
     }
 
+    private fun startGeofenceMonitor() {
+        if (geofenceJob != null) return
+        geofenceJob = viewModelScope.launch {
+            checkGeofenceOnce()
+            while (true) {
+                delay(300_000)
+                checkGeofenceOnce()
+            }
+        }
+    }
+
+    private suspend fun checkGeofenceOnce() {
+        if (state.activeMode != AppMode.PROTECTED) {
+            lastGeofenceInside = null
+            return
+        }
+
+        val authorizedBundles = state.monitorRuleBundles.filter {
+            it.authorizedTypes.contains(RuleType.GEOFENCE)
+        }
+        if (authorizedBundles.isEmpty()) {
+            lastGeofenceInside = null
+            return
+        }
+
+        if (!isWithinAnyWindow(state.timeWindows)) {
+            lastGeofenceInside = null
+            return
+        }
+
+        val areas = authorizedBundles.flatMap { bundle ->
+            bundle.requested.filter { it.type == RuleType.GEOFENCE }
+                .flatMap { it.params.geofenceAreas ?: emptyList() }
+        }
+        if (areas.isEmpty()) {
+            lastGeofenceInside = null
+            return
+        }
+
+        val loc = locationProvider?.invoke() ?: return
+        val isInside = areas.any { area ->
+            val distance = distanceMeters(
+                loc.latitude,
+                loc.longitude,
+                area.latitude,
+                area.longitude
+            )
+            distance <= area.radiusMeters
+        }
+
+        val wasInside = lastGeofenceInside
+        lastGeofenceInside = isInside
+        if ((wasInside == null && !isInside) || (wasInside == true && !isInside)) {
+            triggerAlertWithTimer(RuleType.GEOFENCE)
+        }
+    }
+
     private fun startRulesByMonitorListener(uid: String) {
         rulesByMonitorListener?.remove()
         rulesByMonitorListener = db.collection("users").document(uid).collection("rulesByMonitor")
             .addSnapshotListener { snap, _ ->
                 Log.d("AppViewModel", "rulesByMonitor snapshot for $uid: ${snap?.size() ?: 0} docs")
                 val bundles = snap?.documents?.map { d ->
+                    val storedAreas = (d.get("geofenceAreas") as? List<*>)
+                        ?.mapNotNull { it as? Map<*, *> }
+                        ?.mapNotNull {
+                            val lat = (it["latitude"] as? Number)?.toDouble() ?: return@mapNotNull null
+                            val lon = (it["longitude"] as? Number)?.toDouble() ?: return@mapNotNull null
+                            val radius = (it["radiusMeters"] as? Number)?.toDouble() ?: return@mapNotNull null
+                            GeofenceArea(latitude = lat, longitude = lon, radiusMeters = radius)
+                        }
                     val requested = (d.get("requested") as? List<*>)
                         ?.mapNotNull { it as? Map<*, *> }
                         ?.mapNotNull {
@@ -348,7 +431,9 @@ class AppViewModel @Inject constructor(
                             val paramsMap = it["params"] as? Map<*, *>
                             val params = RuleParams(
                                 maxSpeed = (paramsMap?.get("maxSpeed") as? Number)?.toFloat(),
-                                inactivityDurationMin = (paramsMap?.get("inactivityDurationMin") as? Number)?.toInt()
+                                inactivityDurationMin = (paramsMap?.get("inactivityDurationMin") as? Number)?.toInt(),
+                                geofenceAreas = if (type == RuleType.GEOFENCE) storedAreas else null,
+                                geofenceRadiusMeters = (paramsMap?.get("geofenceRadiusMeters") as? Number)?.toDouble()
                             )
                             MonitoringRule(type = type, params = params)
                         } ?: emptyList()
@@ -366,6 +451,9 @@ class AppViewModel @Inject constructor(
                     monitorRuleBundles = bundles,
                     inactivityAuthorized = bundles.any { it.authorizedTypes.contains(RuleType.PROLONGED_INACTIVITY) }
                 )
+                viewModelScope.launch {
+                    checkGeofenceOnce()
+                }
             }
     }
 
@@ -398,10 +486,13 @@ class AppViewModel @Inject constructor(
         myAlertsListener?.remove()
         rulesByMonitorListener?.remove()
         monitorPopupListener?.remove()
+        geofenceJob?.cancel()
         protectedAlertsListeners.values.forEach { it.remove() }
         protectedAlertsListeners.clear()
         alertsMap.clear()
         rulesByMonitorListener = null
+        geofenceJob = null
+        lastGeofenceInside = null
         state = AppUiState()
     }
 
@@ -442,11 +533,20 @@ class AppViewModel @Inject constructor(
     fun removeProtectedUser(id: String) = viewModelScope.launch { try { authRepo.removeAssociation(state.me!!.uid, id); state = state.copy(isRemovalSuccessful = true) } catch (e: Exception) {} }
     fun requestRulesForProtected(p: String, t: List<RuleType>, r: RuleParams) = viewModelScope.launch { try { monitoringRepo.requestRules(p, state.me!!.uid, t.map { MonitoringRule(it, r, true) }); state = state.copy(isRequestSuccessful = true) } catch (e: Exception) {} }
     fun loadRulesForProtected(p: String) = viewModelScope.launch { try { state = state.copy(rulesForSelectedProtected = monitoringRepo.getRulesForProtected(p).find { it.monitorId == state.me!!.uid }) } catch (e: Exception) {} }
-    fun saveAuthorizations(m: String, a: List<RuleType>, i: Int?) = viewModelScope.launch {
+    fun saveAuthorizations(
+        m: String,
+        a: List<RuleType>,
+        i: Int?,
+        geofenceAreas: List<GeofenceArea>?
+    ) = viewModelScope.launch {
         try {
-            monitoringRepo.saveAuthorizations(state.me!!.uid, m, a, i)
+            monitoringRepo.saveAuthorizations(state.me!!.uid, m, a, i, geofenceAreas)
             if (i != null) {
                 authRepo.updateInactivityDuration(i)
+            }
+            if (geofenceAreas != null) {
+                lastGeofenceInside = true
+                checkGeofenceOnce()
             }
             refreshProtectedMetadata(state.me!!.uid)
         } catch (e: Exception) {}
@@ -497,10 +597,37 @@ class AppViewModel @Inject constructor(
                     recordingSecondsLeft = 0,
                     userInactivitySeconds = 0
                 )
+                lastGeofenceInside = null
             } else {
                 state = state.copy(activeMode = mode)
             }
         }
+    }
+
+    private fun isWithinAnyWindow(windows: List<TimeWindow>): Boolean {
+        if (windows.isEmpty()) return true
+        val cal = Calendar.getInstance()
+        val day = ((cal.get(Calendar.DAY_OF_WEEK) + 5) % 7) + 1
+        val hour = cal.get(Calendar.HOUR_OF_DAY)
+        return windows.any { window ->
+            day in window.daysOfWeek && hour in window.startHour until window.endHour
+        }
+    }
+
+    private fun distanceMeters(
+        lat1: Double,
+        lon1: Double,
+        lat2: Double,
+        lon2: Double
+    ): Double {
+        val r = 6371000.0
+        val dLat = Math.toRadians(lat2 - lat1)
+        val dLon = Math.toRadians(lon2 - lon1)
+        val a = sin(dLat / 2) * sin(dLat / 2) +
+            cos(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) *
+            sin(dLon / 2) * sin(dLon / 2)
+        val c = 2 * atan2(sqrt(a), sqrt(1 - a))
+        return r * c
     }
 
     private fun triggerInactivityAlert() = viewModelScope.launch {

@@ -175,7 +175,8 @@ private fun SafetYSecApp(
     suspend fun getCurrentLocation(): GeoPoint? {
         return try {
             if (!permissionsGranted) return null
-            val location = fusedLocationClient.lastLocation.await()
+            val location = fusedLocationClient.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, null).await()
+                ?: fusedLocationClient.lastLocation.await()
             location?.let { GeoPoint(it.latitude, it.longitude) }
         } catch (e: Exception) {
             Log.e("MainActivity", "Failed to get location", e)
