@@ -95,6 +95,10 @@ class AuthRepository @Inject constructor(
         usersCol.document(requireCurrentUid()).update("inactivityDurationMin", minutes).await()
     }
 
+    suspend fun updateMonitorAlertsClearedAt(timestamp: Long) {
+        usersCol.document(requireCurrentUid()).update("monitorAlertsClearedAt", timestamp).await()
+    }
+
     // --- ASSOCIATION (OTP) METHODS ---
 
     suspend fun generateAssociationCode(): String {

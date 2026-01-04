@@ -13,5 +13,6 @@ data class User(
     val protectedUsers: List<String> = emptyList(),
     val associationCode: String? = null,
     val associationCodeCreatedAt: Long? = null,
-    val inactivityDurationMin: Int = 15
+    val inactivityDurationMin: Int = 15,
+    val monitorAlertsClearedAt: Long = 0L
 )

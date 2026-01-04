@@ -39,6 +39,7 @@ fun MonitorDashboardScreen(vm: AppViewModel) {
     val state = vm.state
     val sdf = remember { SimpleDateFormat("HH:mm:ss dd/MM", Locale.getDefault()) }
     var showRemovalSuccessDialog by remember { mutableStateOf(false) }
+    var showClearedDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(state.isRemovalSuccessful) {
         if (state.isRemovalSuccessful) {
@@ -84,6 +85,16 @@ fun MonitorDashboardScreen(vm: AppViewModel) {
                 Icon(Icons.Default.History, contentDescription = null, tint = MaterialTheme.colorScheme.secondary)
                 Spacer(Modifier.width(8.dp))
                 Text("Recent Activity Log", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.weight(1f))
+                IconButton(
+                    onClick = {
+                        vm.clearMonitorAlertsHistory()
+                        showClearedDialog = true
+                    },
+                    enabled = state.monitorAlerts.isNotEmpty()
+                ) {
+                    Icon(Icons.Default.Delete, contentDescription = "Clear recent alerts")
+                }
             }
         }
         if (state.monitorAlerts.isEmpty()) {
@@ -116,6 +127,19 @@ fun MonitorDashboardScreen(vm: AppViewModel) {
                     showRemovalSuccessDialog = false
                     vm.consumeRemovalSuccess()
                 }) {
+                    Text("OK")
+                }
+            }
+        )
+    }
+
+    if (showClearedDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearedDialog = false },
+            title = { Text("Recent alerts cleared") },
+            text = { Text("The recent alerts list has been cleared.") },
+            confirmButton = {
+                TextButton(onClick = { showClearedDialog = false }) {
                     Text("OK")
                 }
             }

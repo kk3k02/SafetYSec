@@ -42,6 +42,7 @@ data class AppUiState(
     val error: String? = null,
     val myAlerts: List<Alert> = emptyList(),
     val monitorAlerts: List<Alert> = emptyList(),
+    val monitorAlertsClearedAt: Long = 0L,
     val monitorRuleBundles: List<MonitorRulesBundle> = emptyList(),
     val timeWindows: List<TimeWindow> = emptyList(),
     val myLinkedMonitors: List<User> = emptyList(),
@@ -270,21 +271,21 @@ class AppViewModel @Inject constructor(
                         if (snap == null) return@addSnapshotListener
                         if (snap.metadata.isFromCache && snap.isEmpty) return@addSnapshotListener
                         alertsMap[pUid] = snap.documents.mapNotNull { it.toObject(Alert::class.java)?.copy(id = it.id) }
-                        state = state.copy(monitorAlerts = alertsMap.values.flatten().sortedByDescending { it.timestamp })
+                        state = state.copy(monitorAlerts = filteredMonitorAlerts(alertsMap.values.flatten()))
                     }
                 viewModelScope.launch {
                     try {
                         val snap = db.collection("users").document(pUid).collection("my_alerts")
                             .orderBy("timestamp", Query.Direction.DESCENDING).limit(20).get().await()
                         alertsMap[pUid] = snap.documents.mapNotNull { it.toObject(Alert::class.java)?.copy(id = it.id) }
-                        state = state.copy(monitorAlerts = alertsMap.values.flatten().sortedByDescending { it.timestamp })
+                        state = state.copy(monitorAlerts = filteredMonitorAlerts(alertsMap.values.flatten()))
                     } catch (e: Exception) { }
                 }
             }
         }
 
         // Update monitorAlerts in case pIds changed
-        state = state.copy(monitorAlerts = alertsMap.values.flatten().sortedByDescending { it.timestamp })
+        state = state.copy(monitorAlerts = filteredMonitorAlerts(alertsMap.values.flatten()))
 
         viewModelScope.launch {
             try {
@@ -299,6 +300,17 @@ class AppViewModel @Inject constructor(
         val alert = state.pendingAlerts.firstOrNull() ?: return@launch
         alertRepo.deleteAlertFromMonitor(me.uid, alert.id)
         state = state.copy(pendingAlerts = state.pendingAlerts.drop(1))
+    }
+
+    fun clearMonitorAlertsHistory() = viewModelScope.launch {
+        val clearedAt = System.currentTimeMillis()
+        state = state.copy(
+            monitorAlertsClearedAt = clearedAt,
+            monitorAlerts = emptyList()
+        )
+        try {
+            authRepo.updateMonitorAlertsClearedAt(clearedAt)
+        } catch (e: Exception) { }
     }
 
     fun refreshMyAlertsHistory() = viewModelScope.launch {
@@ -328,7 +340,11 @@ class AppViewModel @Inject constructor(
                     val wasMonitor = state.me?.roles?.contains("Monitor") == true
                     val isMonitor = me.roles.contains("Monitor")
 
-                    state = state.copy(me = me, isLoading = false)
+                    state = state.copy(
+                        me = me,
+                        isLoading = false,
+                        monitorAlertsClearedAt = me.monitorAlertsClearedAt
+                    )
 
                     if (me.roles.contains("Protected")) {
                         Log.d("AppViewModel", "Protected role detected, starting rules listener for ${me.uid}")
@@ -352,7 +368,7 @@ class AppViewModel @Inject constructor(
                                 val alerts = me.protectedUsers.flatMap { uid ->
                                     alertRepo.getProtectedAlertHistory(uid)
                                 }
-                                state = state.copy(monitorAlerts = alerts.sortedByDescending { it.timestamp })
+                                state = state.copy(monitorAlerts = filteredMonitorAlerts(alerts))
                             } catch (e: Exception) { }
                         }
                         startMonitoringDashboard(me.uid)
@@ -371,6 +387,11 @@ class AppViewModel @Inject constructor(
         protectedAlertsListeners.clear()
         alertsMap.clear()
         state = state.copy(monitorAlerts = emptyList(), linkedProtectedUsers = emptyList(), pendingAlerts = emptyList())
+    }
+
+    private fun filteredMonitorAlerts(alerts: List<Alert>): List<Alert> {
+        val clearedAt = state.monitorAlertsClearedAt
+        return alerts.filter { it.timestamp > clearedAt }.sortedByDescending { it.timestamp }
     }
 
     private fun startMyAlertsListener(uid: String) {
