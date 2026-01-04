@@ -89,6 +89,10 @@ class AppViewModel @Inject constructor(
     private var recording: Recording? = null
     private var protectedMonitoringDelayJob: Job? = null
     private var protectedMonitoringReady: Boolean = false
+    private var accidentJob: Job? = null
+    private var lastAccidentSampleSpeedKmh: Float? = null
+    private var lastAccidentSampleAtMs: Long? = null
+    private var lastAccidentAlertAt: Long = 0L
 
     private var profileListener: ListenerRegistration? = null
     private var myAlertsListener: ListenerRegistration? = null
@@ -390,12 +394,32 @@ class AppViewModel @Inject constructor(
         }
     }
 
+    private fun startAccidentMonitor() {
+        if (accidentJob != null) return
+        accidentJob = viewModelScope.launch {
+            checkAccidentOnce()
+            while (true) {
+                delay(2000)
+                checkAccidentOnce()
+            }
+        }
+    }
+
     private fun stopSpeedMonitor(resetState: Boolean) {
         speedJob?.cancel()
         speedJob = null
         if (resetState) {
             lastSpeedOverLimit = null
             pendingInitialSpeedAlert = false
+        }
+    }
+
+    private fun stopAccidentMonitor(resetState: Boolean) {
+        accidentJob?.cancel()
+        accidentJob = null
+        if (resetState) {
+            lastAccidentSampleSpeedKmh = null
+            lastAccidentSampleAtMs = null
         }
     }
 
@@ -414,6 +438,17 @@ class AppViewModel @Inject constructor(
         }
     }
 
+    private fun updateAccidentMonitorState() {
+        val shouldRun = state.activeMode == AppMode.PROTECTED &&
+            protectedMonitoringReady &&
+            isAccidentAuthorized()
+        if (shouldRun) {
+            startAccidentMonitor()
+        } else if (accidentJob != null) {
+            stopAccidentMonitor(resetState = true)
+        }
+    }
+
     private fun scheduleProtectedMonitoringStart() {
         protectedMonitoringDelayJob?.cancel()
         protectedMonitoringReady = false
@@ -425,6 +460,7 @@ class AppViewModel @Inject constructor(
                 startInactivityTimer()
                 startGeofenceMonitor()
                 updateSpeedMonitorState()
+                updateAccidentMonitorState()
             }
         }
     }
@@ -438,6 +474,7 @@ class AppViewModel @Inject constructor(
         geofenceJob?.cancel()
         geofenceJob = null
         stopSpeedMonitor(resetState = true)
+        stopAccidentMonitor(resetState = true)
     }
 
     private suspend fun checkGeofenceOnce() {
@@ -529,6 +566,7 @@ class AppViewModel @Inject constructor(
                     inactivityAuthorized = bundles.any { it.authorizedTypes.contains(RuleType.PROLONGED_INACTIVITY) }
                 )
                 updateSpeedMonitorState()
+                updateAccidentMonitorState()
                 viewModelScope.launch {
                     checkGeofenceOnce()
                     checkSpeedOnce()
@@ -549,6 +587,7 @@ class AppViewModel @Inject constructor(
                 inactivityDurationMin = me.inactivityDurationMin
             )
             updateSpeedMonitorState()
+            updateAccidentMonitorState()
             checkSpeedOnce()
         } catch (e: Exception) { }
     }
@@ -717,6 +756,9 @@ class AppViewModel @Inject constructor(
         triggerAlertWithTimer(RuleType.PROLONGED_INACTIVITY)
     }
 
+    private fun isAccidentAuthorized(): Boolean =
+        state.monitorRuleBundles.any { it.authorizedTypes.contains(RuleType.ACCIDENT) }
+
     private fun authorizedMaxSpeedKmh(): Float? {
         val limits = state.monitorRuleBundles
             .filter { it.authorizedTypes.contains(RuleType.SPEED) }
@@ -724,6 +766,55 @@ class AppViewModel @Inject constructor(
                 bundle.requested.firstOrNull { it.type == RuleType.SPEED }?.params?.maxSpeed
             }
         return limits.minOrNull()
+    }
+
+    private suspend fun checkAccidentOnce() {
+        if (!protectedMonitoringReady) return
+        if (state.activeMode != AppMode.PROTECTED) {
+            lastAccidentSampleSpeedKmh = null
+            lastAccidentSampleAtMs = null
+            return
+        }
+        if (!isAccidentAuthorized()) {
+            lastAccidentSampleSpeedKmh = null
+            lastAccidentSampleAtMs = null
+            return
+        }
+        if (!isWithinAnyWindow(state.timeWindows)) {
+            Log.d("AccidentMonitor", "skip: outside window")
+            return
+        }
+
+        val speedKmh = speedProvider?.invoke() ?: return
+        val now = System.currentTimeMillis()
+        val prevSpeed = lastAccidentSampleSpeedKmh
+        val prevAt = lastAccidentSampleAtMs
+        lastAccidentSampleSpeedKmh = speedKmh
+        lastAccidentSampleAtMs = now
+
+        if (prevSpeed == null || prevAt == null) {
+            Log.d("AccidentMonitor", "init: speed=$speedKmh")
+            return
+        }
+        val deltaMs = now - prevAt
+        if (deltaMs <= 0L || deltaMs > 6000L) {
+            Log.d("AccidentMonitor", "skip: deltaMs=$deltaMs")
+            return
+        }
+
+        // Fixed internal heuristic: sharp drop over short interval (non-configurable).
+        val suddenDrop = prevSpeed >= 15f && speedKmh <= prevSpeed * 0.3f
+        if (!suddenDrop) {
+            Log.d("AccidentMonitor", "no-drop: prev=$prevSpeed now=$speedKmh dt=$deltaMs")
+            return
+        }
+
+        val nowTs = System.currentTimeMillis()
+        if (nowTs - lastAccidentAlertAt >= 60_000L) {
+            lastAccidentAlertAt = nowTs
+            Log.d("AccidentMonitor", "fire: prev=$prevSpeed now=$speedKmh dt=$deltaMs")
+            alertRepo.emitDetectionEvent(RuleType.ACCIDENT)
+        }
     }
 
     private suspend fun checkSpeedOnce() {
