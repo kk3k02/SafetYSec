@@ -759,6 +759,17 @@ fun ProtectedProfileScreen(
     var oldPin by remember { mutableStateOf("") }
     var newPin by remember { mutableStateOf("") }
     var pinError by remember { mutableStateOf<String?>(null) }
+    var showEditNameDialog by remember { mutableStateOf(false) }
+    var editedName by remember { mutableStateOf("") }
+    var nameError by remember { mutableStateOf<String?>(null) }
+    var showPasswordDialog by remember { mutableStateOf(false) }
+    var currentPassword by remember { mutableStateOf("") }
+    var newPassword by remember { mutableStateOf("") }
+    var confirmPassword by remember { mutableStateOf("") }
+    var passwordError by remember { mutableStateOf<String?>(null) }
+    var showPasswordSuccessDialog by remember { mutableStateOf(false) }
+    var showProfileMessageDialog by remember { mutableStateOf(false) }
+    var profileMessage by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) { authVm.loadAccountInfo() }
 
@@ -768,12 +779,38 @@ fun ProtectedProfileScreen(
         }
     }
 
+    LaunchedEffect(authSt.message) {
+        if (authSt.message == "Password changed successfully.") {
+            showPasswordDialog = false
+            currentPassword = ""
+            newPassword = ""
+            confirmPassword = ""
+            passwordError = null
+            showPasswordSuccessDialog = true
+        } else if (!authSt.message.isNullOrBlank()) {
+            profileMessage = authSt.message
+            showProfileMessageDialog = true
+        }
+    }
+
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
         Spacer(Modifier.height(8.dp))
         Card(modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp)) {
-                Text("Name: ${authSt.accountName ?: "-"}", style = MaterialTheme.typography.bodyLarge)
-                Text("Email: ${authSt.accountEmail ?: "-"}", style = MaterialTheme.typography.bodyLarge)
+            Row(
+                modifier = Modifier.padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("Name: ${authSt.accountName ?: "-"}", style = MaterialTheme.typography.bodyLarge)
+                    Text("Email: ${authSt.accountEmail ?: "-"}", style = MaterialTheme.typography.bodyLarge)
+                }
+                IconButton(onClick = {
+                    editedName = authSt.accountName.orEmpty()
+                    nameError = null
+                    showEditNameDialog = true
+                }) {
+                    Icon(Icons.Default.Edit, contentDescription = "Edit name")
+                }
             }
         }
         Spacer(Modifier.height(24.dp))
@@ -790,11 +827,23 @@ fun ProtectedProfileScreen(
             modifier = Modifier.fillMaxWidth()
         ) { Text("Change PIN") }
 
+        Spacer(Modifier.height(12.dp))
+        Button(
+            onClick = {
+                currentPassword = ""
+                newPassword = ""
+                confirmPassword = ""
+                passwordError = null
+                authVm.clearError()
+                showPasswordDialog = true
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) { Text("Change Password") }
+
         Spacer(Modifier.height(24.dp))
         Button(onClick = onSwitchToMonitor, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)) { Text("Switch to Monitor Mode") }
 
         authSt.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp)) }
-        authSt.message?.let { Text(it, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 8.dp)) }
         st.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp)) }
     }
 
@@ -886,6 +935,191 @@ fun ProtectedProfileScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showPinDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
+
+    if (showEditNameDialog) {
+        AlertDialog(
+            onDismissRequest = { showEditNameDialog = false },
+            title = { Text("Edit name") },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = editedName,
+                        onValueChange = {
+                            editedName = it
+                            nameError = null
+                        },
+                        label = { Text("Name") },
+                        modifier = Modifier.fillMaxWidth(),
+                        isError = nameError != null
+                    )
+                    nameError?.let { error ->
+                        Text(
+                            text = error,
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val value = editedName.trim()
+                    nameError = if (value.isBlank()) "Name cannot be empty." else null
+                    if (nameError == null) {
+                        authVm.updateProfile(value, authSt.accountEmail.orEmpty(), null)
+                        showEditNameDialog = false
+                    }
+                }) { Text("Save") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showEditNameDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
+
+    if (showPasswordDialog) {
+        AlertDialog(
+            onDismissRequest = { showPasswordDialog = false },
+            title = { Text("Change Password") },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = currentPassword,
+                        onValueChange = {
+                            currentPassword = it
+                            passwordError = null
+                            authVm.clearError()
+                        },
+                        label = { Text("Current password") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        modifier = Modifier.fillMaxWidth(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        isError = passwordError != null || authSt.error != null
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = newPassword,
+                        onValueChange = {
+                            newPassword = it
+                            passwordError = null
+                            authVm.clearError()
+                        },
+                        label = { Text("New password") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        modifier = Modifier.fillMaxWidth(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        isError = passwordError != null || authSt.error != null
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = confirmPassword,
+                        onValueChange = {
+                            confirmPassword = it
+                            passwordError = null
+                            authVm.clearError()
+                        },
+                        label = { Text("Confirm new password") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        modifier = Modifier.fillMaxWidth(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(
+                            onDone = {
+                                val current = currentPassword.trim()
+                                val newPwd = newPassword.trim()
+                                val confirm = confirmPassword.trim()
+                                passwordError = when {
+                                    current.isBlank() -> "Current password is required."
+                                    newPwd.isBlank() -> "New password is required."
+                                    confirm.isBlank() -> "Please confirm the new password."
+                                    newPwd != confirm -> "New passwords do not match."
+                                    newPwd == current -> "New password must differ from current."
+                                    newPwd.length < 6 -> "New password must be at least 6 characters."
+                                    else -> null
+                                }
+                                if (passwordError == null) {
+                                    authVm.changePassword(current, newPwd)
+                                }
+                            }
+                        ),
+                        isError = passwordError != null || authSt.error != null
+                    )
+                    passwordError?.let { error ->
+                        Text(
+                            text = error,
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
+                    authSt.error?.let { error ->
+                        Text(
+                            text = error,
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val current = currentPassword.trim()
+                    val newPwd = newPassword.trim()
+                    val confirm = confirmPassword.trim()
+                    passwordError = when {
+                        current.isBlank() -> "Current password is required."
+                        newPwd.isBlank() -> "New password is required."
+                        confirm.isBlank() -> "Please confirm the new password."
+                        newPwd != confirm -> "New passwords do not match."
+                        newPwd == current -> "New password must differ from current."
+                        newPwd.length < 6 -> "New password must be at least 6 characters."
+                        else -> null
+                    }
+                    if (passwordError == null) {
+                        authVm.changePassword(current, newPwd)
+                    }
+                }) { Text("Save") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPasswordDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
+
+    if (showPasswordSuccessDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showPasswordSuccessDialog = false
+                authVm.clearMessage()
+            },
+            title = { Text("Password updated") },
+            text = { Text("Your password has been changed successfully.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showPasswordSuccessDialog = false
+                    authVm.clearMessage()
+                }) { Text("OK") }
+            }
+        )
+    }
+
+    if (showProfileMessageDialog && !profileMessage.isNullOrBlank()) {
+        AlertDialog(
+            onDismissRequest = {
+                showProfileMessageDialog = false
+                authVm.clearMessage()
+            },
+            title = { Text("Profile update") },
+            text = { Text(profileMessage ?: "") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showProfileMessageDialog = false
+                    authVm.clearMessage()
+                }) { Text("OK") }
             }
         )
     }

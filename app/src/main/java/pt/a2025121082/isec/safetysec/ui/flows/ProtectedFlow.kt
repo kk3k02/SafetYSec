@@ -65,9 +65,6 @@ fun ProtectedFlow(
                     Text(title)
                 },
                 actions = {
-                    IconButton(onClick = onProfile) {
-                        Icon(Icons.Default.Person, contentDescription = "Profile")
-                    }
                     if (currentRoute == PRoutes.History) {
                         IconButton(
                             onClick = { showClearDialog.value = true },
