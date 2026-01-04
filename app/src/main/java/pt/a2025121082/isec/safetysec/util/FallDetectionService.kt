@@ -33,11 +33,14 @@ class FallDetectionService : Service(), SensorEventListener {
     private var accelerometer: Sensor? = null
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
-    private val fallTriggerThreshold = 15.0f
+    private val fallImpactThreshold = 17.5f
+    private val freeFallThreshold = 3.5f
+    private val freeFallWindowMs = 1200L
     private val fallCooldownMs = 12_000L
     private var lastFallTriggerAtMs: Long = 0L
     private var fallCheckInProgress = false
     private var lastDebugLogAtMs: Long = 0L
+    private var lastFreeFallAtMs: Long = 0L
 
     override fun onCreate() {
         super.onCreate()
@@ -68,12 +71,19 @@ class FallDetectionService : Service(), SensorEventListener {
         val z = event.values[2]
         val magnitude = sqrt(x * x + y * y + z * z)
         val now = System.currentTimeMillis()
+        if (magnitude < freeFallThreshold) {
+            lastFreeFallAtMs = now
+        }
         if (now - lastDebugLogAtMs >= 1000L) {
-            Log.d("FallDetection", "Accel magnitude=$magnitude threshold=$fallTriggerThreshold")
+            Log.d(
+                "FallDetection",
+                "Accel magnitude=$magnitude impact=$fallImpactThreshold freeFall=$freeFallThreshold"
+            )
             lastDebugLogAtMs = now
         }
 
-        if (magnitude > fallTriggerThreshold) {
+        val hasRecentFreeFall = now - lastFreeFallAtMs <= freeFallWindowMs
+        if (magnitude > fallImpactThreshold && hasRecentFreeFall) {
             Log.d("FallDetection", "Fall candidate magnitude=$magnitude")
             maybeTriggerFall()
         }
