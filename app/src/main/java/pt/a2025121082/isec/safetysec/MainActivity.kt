@@ -166,6 +166,7 @@ private fun SafetYSecApp(
 
     LaunchedEffect(Unit) {
         if (!permissionsGranted) launcher.launch(permissionsToRequest)
+        authViewModel.logout()
         authViewModel.refreshAuthState()
     }
 
