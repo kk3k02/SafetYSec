@@ -337,7 +337,12 @@ class AppViewModel @Inject constructor(
     fun removeProtectedUser(id: String) = viewModelScope.launch { try { authRepo.removeAssociation(state.me!!.uid, id); state = state.copy(isRemovalSuccessful = true) } catch (e: Exception) {} }
     fun requestRulesForProtected(p: String, t: List<RuleType>, r: RuleParams) = viewModelScope.launch { try { monitoringRepo.requestRules(p, state.me!!.uid, t.map { MonitoringRule(it, r, true) }); state = state.copy(isRequestSuccessful = true) } catch (e: Exception) {} }
     fun loadRulesForProtected(p: String) = viewModelScope.launch { try { state = state.copy(rulesForSelectedProtected = monitoringRepo.getRulesForProtected(p).find { it.monitorId == state.me!!.uid }) } catch (e: Exception) {} }
-    fun saveAuthorizations(m: String, a: List<RuleType>, i: Int?) = viewModelScope.launch { try { monitoringRepo.saveAuthorizations(state.me!!.uid, m, a, i) } catch (e: Exception) {} }
+    fun saveAuthorizations(m: String, a: List<RuleType>, i: Int?) = viewModelScope.launch {
+        try {
+            monitoringRepo.saveAuthorizations(state.me!!.uid, m, a, i)
+            refreshProtectedMetadata(state.me!!.uid)
+        } catch (e: Exception) {}
+    }
     fun addTimeWindow(d: List<Int>, s: Int, e: Int) = viewModelScope.launch { try { monitoringRepo.addTimeWindow(state.me!!.uid, TimeWindow(daysOfWeek = d, startHour = s, endHour = e)); state = state.copy(isAdditionSuccessful = true) } catch (e: Exception) {} }
     fun removeTimeWindow(id: String) = viewModelScope.launch { try { monitoringRepo.deleteTimeWindow(state.me!!.uid, id); state = state.copy(isRemovalSuccessful = true) } catch (e: Exception) {} }
     fun toggleFallDetection(ctx: Context) { val n = !state.isFallDetectionEnabled; val i = android.content.Intent(ctx, FallDetectionService::class.java); if (n) { if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) ctx.startForegroundService(i) else ctx.startService(i) } else ctx.stopService(i); state = state.copy(isFallDetectionEnabled = n) }

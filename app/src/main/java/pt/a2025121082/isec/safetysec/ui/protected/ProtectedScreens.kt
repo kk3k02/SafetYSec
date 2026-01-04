@@ -437,18 +437,24 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
     var showRemovalSuccessDialog by remember { mutableStateOf(false) }
     var showUpdateSuccessDialog by remember { mutableStateOf(false) }
     var pendingRequestMonitor by remember { mutableStateOf<Pair<User, List<RuleType>>?>(null) }
+    var shownRequestKeys by remember { mutableStateOf(setOf<String>()) }
 
     LaunchedEffect(st.isRemovalSuccessful) {
         if (st.isRemovalSuccessful) showRemovalSuccessDialog = true
     }
 
-    LaunchedEffect(st.monitorRuleBundles, st.myLinkedMonitors) {
+    LaunchedEffect(st.monitorRuleBundles, st.myLinkedMonitors, shownRequestKeys) {
         st.myLinkedMonitors.forEach { monitor ->
             val bundle = st.monitorRuleBundles.find { it.monitorId == monitor.uid }
             if (bundle != null && bundle.requested.isNotEmpty()) {
                 val requestedTypes = bundle.requested.map { it.type }
                 val notYetAuthorized = requestedTypes.filter { !bundle.authorizedTypes.contains(it) }
-                if (notYetAuthorized.isNotEmpty()) pendingRequestMonitor = monitor to requestedTypes
+                if (notYetAuthorized.isNotEmpty()) {
+                    val requestKey = monitor.uid + ":" + requestedTypes.sorted().joinToString(",")
+                    if (!shownRequestKeys.contains(requestKey)) {
+                        pendingRequestMonitor = monitor to requestedTypes
+                    }
+                }
             }
         }
     }
@@ -585,8 +591,14 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
     }
 
     pendingRequestMonitor?.let { (monitor, requestedTypes) ->
+        val requestKey = remember(monitor.uid, requestedTypes) {
+            monitor.uid + ":" + requestedTypes.sorted().joinToString(",")
+        }
         AlertDialog(
-            onDismissRequest = { pendingRequestMonitor = null },
+            onDismissRequest = {
+                shownRequestKeys = shownRequestKeys + requestKey
+                pendingRequestMonitor = null
+            },
             title = { Text("New Access Request") },
             text = {
                 Column {
@@ -600,11 +612,15 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
             confirmButton = {
                 Button(onClick = {
                     vm.saveAuthorizations(monitor.uid, requestedTypes, null)
+                    shownRequestKeys = shownRequestKeys + requestKey
                     pendingRequestMonitor = null
                 }) { Text("Accept All") }
             },
             dismissButton = {
-                TextButton(onClick = { pendingRequestMonitor = null }) { Text("Decide Later") }
+                TextButton(onClick = {
+                    shownRequestKeys = shownRequestKeys + requestKey
+                    pendingRequestMonitor = null
+                }) { Text("Decline") }
             }
         )
     }
