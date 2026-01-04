@@ -87,6 +87,8 @@ class AppViewModel @Inject constructor(
     private var geofenceJob: Job? = null
     private var recordingTimerJob: Job? = null
     private var recording: Recording? = null
+    private var protectedMonitoringDelayJob: Job? = null
+    private var protectedMonitoringReady: Boolean = false
 
     private var profileListener: ListenerRegistration? = null
     private var myAlertsListener: ListenerRegistration? = null
@@ -97,6 +99,7 @@ class AppViewModel @Inject constructor(
 
     // Location provider injected from UI (MainActivity)
     private var locationProvider: (suspend () -> GeoPoint?)? = null
+    private var speedProvider: (suspend () -> Float?)? = null
 
     // SINGLE INSTANCE VideoCapture
     val videoCapture: VideoCapture<Recorder> = VideoCapture.withOutput(
@@ -107,6 +110,11 @@ class AppViewModel @Inject constructor(
 
     private var currentAlertIdForRecording: String? = null
     private var lastGeofenceInside: Boolean? = null
+    private var lastSpeedOverLimit: Boolean? = null
+    private var speedJob: Job? = null
+    private var pendingInitialSpeedAlert: Boolean = false
+    private var lastLoggedSpeedCheckAt: Long = 0L
+    private var lastSpeedAlertAt: Long = 0L
 
     init {
         viewModelScope.launch {
@@ -118,6 +126,10 @@ class AppViewModel @Inject constructor(
 
     fun setLocationProvider(provider: suspend () -> GeoPoint?) {
         this.locationProvider = provider
+    }
+
+    fun setSpeedProvider(provider: suspend () -> Float?) {
+        this.speedProvider = provider
     }
 
     suspend fun getCurrentLocation(): GeoPoint? = locationProvider?.invoke()
@@ -176,6 +188,7 @@ class AppViewModel @Inject constructor(
     private fun triggerAlertWithTimer(type: RuleType) = viewModelScope.launch {
         val me = state.me ?: return@launch
         if (!me.roles.contains("Protected") || state.activeMode != AppMode.PROTECTED) return@launch
+        if (!protectedMonitoringReady) return@launch
         if (state.isCancelWindowOpen || state.isRecordingPopupOpen) return@launch
 
         state = state.copy(
@@ -203,6 +216,10 @@ class AppViewModel @Inject constructor(
         if (alertId != null) {
             currentAlertIdForRecording = alertId
             state = state.copy(isAlertSent = true, recordingSecondsLeft = 30, isRecordingPopupOpen = true)
+        } else if (type == RuleType.SPEED) {
+            // Allow retriggering if user cancels while still over limit
+            lastSpeedOverLimit = false
+            pendingInitialSpeedAlert = false
         }
     }
 
@@ -300,8 +317,7 @@ class AppViewModel @Inject constructor(
                         }
                         startRulesByMonitorListener(me.uid)
                         viewModelScope.launch { refreshProtectedMetadata(me.uid) }
-                        startInactivityTimer()
-                        startGeofenceMonitor()
+                        scheduleProtectedMonitoringStart()
                     }
 
                     if (isMonitor) {
@@ -361,6 +377,67 @@ class AppViewModel @Inject constructor(
                 checkGeofenceOnce()
             }
         }
+    }
+
+    private fun startSpeedMonitor() {
+        if (speedJob != null) return
+        speedJob = viewModelScope.launch {
+            checkSpeedOnce()
+            while (true) {
+                delay(15000)
+                checkSpeedOnce()
+            }
+        }
+    }
+
+    private fun stopSpeedMonitor(resetState: Boolean) {
+        speedJob?.cancel()
+        speedJob = null
+        if (resetState) {
+            lastSpeedOverLimit = null
+            pendingInitialSpeedAlert = false
+        }
+    }
+
+    private fun updateSpeedMonitorState() {
+        val shouldRun = state.activeMode == AppMode.PROTECTED &&
+            protectedMonitoringReady &&
+            authorizedMaxSpeedKmh() != null
+        Log.d(
+            "SpeedMonitor",
+            "updateSpeedMonitorState: mode=${state.activeMode} ready=$protectedMonitoringReady max=${authorizedMaxSpeedKmh()} run=$shouldRun"
+        )
+        if (shouldRun) {
+            startSpeedMonitor()
+        } else if (speedJob != null) {
+            stopSpeedMonitor(resetState = true)
+        }
+    }
+
+    private fun scheduleProtectedMonitoringStart() {
+        protectedMonitoringDelayJob?.cancel()
+        protectedMonitoringReady = false
+        protectedMonitoringDelayJob = viewModelScope.launch {
+            delay(15_000)
+            val me = state.me
+            if (me != null && me.roles.contains("Protected") && state.activeMode == AppMode.PROTECTED) {
+                protectedMonitoringReady = true
+                startInactivityTimer()
+                startGeofenceMonitor()
+                updateSpeedMonitorState()
+            }
+        }
+    }
+
+    private fun stopProtectedMonitoring() {
+        protectedMonitoringDelayJob?.cancel()
+        protectedMonitoringDelayJob = null
+        protectedMonitoringReady = false
+        inactivityJob?.cancel()
+        inactivityJob = null
+        geofenceJob?.cancel()
+        geofenceJob = null
+        stopSpeedMonitor(resetState = true)
     }
 
     private suspend fun checkGeofenceOnce() {
@@ -451,8 +528,10 @@ class AppViewModel @Inject constructor(
                     monitorRuleBundles = bundles,
                     inactivityAuthorized = bundles.any { it.authorizedTypes.contains(RuleType.PROLONGED_INACTIVITY) }
                 )
+                updateSpeedMonitorState()
                 viewModelScope.launch {
                     checkGeofenceOnce()
+                    checkSpeedOnce()
                 }
             }
     }
@@ -469,6 +548,8 @@ class AppViewModel @Inject constructor(
                 inactivityAuthorized = bundles.any { it.authorizedTypes.contains(RuleType.PROLONGED_INACTIVITY) },
                 inactivityDurationMin = me.inactivityDurationMin
             )
+            updateSpeedMonitorState()
+            checkSpeedOnce()
         } catch (e: Exception) { }
     }
 
@@ -486,7 +567,7 @@ class AppViewModel @Inject constructor(
         myAlertsListener?.remove()
         rulesByMonitorListener?.remove()
         monitorPopupListener?.remove()
-        geofenceJob?.cancel()
+        stopProtectedMonitoring()
         protectedAlertsListeners.values.forEach { it.remove() }
         protectedAlertsListeners.clear()
         alertsMap.clear()
@@ -598,8 +679,10 @@ class AppViewModel @Inject constructor(
                     userInactivitySeconds = 0
                 )
                 lastGeofenceInside = null
+                stopProtectedMonitoring()
             } else {
                 state = state.copy(activeMode = mode)
+                scheduleProtectedMonitoringStart()
             }
         }
     }
@@ -632,6 +715,55 @@ class AppViewModel @Inject constructor(
 
     private fun triggerInactivityAlert() = viewModelScope.launch {
         triggerAlertWithTimer(RuleType.PROLONGED_INACTIVITY)
+    }
+
+    private fun authorizedMaxSpeedKmh(): Float? {
+        val limits = state.monitorRuleBundles
+            .filter { it.authorizedTypes.contains(RuleType.SPEED) }
+            .mapNotNull { bundle ->
+                bundle.requested.firstOrNull { it.type == RuleType.SPEED }?.params?.maxSpeed
+            }
+        return limits.minOrNull()
+    }
+
+    private suspend fun checkSpeedOnce() {
+        if (!protectedMonitoringReady) return
+        val now = System.currentTimeMillis()
+        if (now - lastLoggedSpeedCheckAt > 10_000L) {
+            lastLoggedSpeedCheckAt = now
+            Log.d("SpeedMonitor", "checkSpeedOnce: mode=${state.activeMode} windows=${state.timeWindows.size}")
+        }
+        if (state.activeMode != AppMode.PROTECTED) {
+            lastSpeedOverLimit = null
+            pendingInitialSpeedAlert = false
+            return
+        }
+
+        val maxSpeed = authorizedMaxSpeedKmh()
+        if (maxSpeed == null || maxSpeed <= 0f) {
+            lastSpeedOverLimit = null
+            pendingInitialSpeedAlert = false
+            Log.d("SpeedMonitor", "skip: no maxSpeed")
+            return
+        }
+
+        val speedKmh = speedProvider?.invoke()
+        if (speedKmh == null || speedKmh < 0f) {
+            Log.d("SpeedMonitor", "skip: speed unavailable")
+            return
+        }
+
+        val overLimit = speedKmh > maxSpeed
+        lastSpeedOverLimit = overLimit
+        pendingInitialSpeedAlert = false
+        if (!overLimit) return
+
+        val nowTs = System.currentTimeMillis()
+        if (nowTs - lastSpeedAlertAt >= 60_000L) {
+            lastSpeedAlertAt = nowTs
+            Log.d("SpeedMonitor", "fire: overlimit speed=$speedKmh max=$maxSpeed")
+            triggerAlertWithTimer(RuleType.SPEED)
+        }
     }
 
     override fun onCleared() {

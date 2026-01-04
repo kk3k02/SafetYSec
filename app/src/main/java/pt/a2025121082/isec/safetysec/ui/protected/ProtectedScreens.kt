@@ -453,6 +453,10 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
         if (bundle == null) return base
         val rule = bundle.requested.firstOrNull { it.type == type }
         return when (type) {
+            RuleType.SPEED -> {
+                val max = rule?.params?.maxSpeed
+                if (max != null) "$base (${max.toInt()} km/h)" else base
+            }
             RuleType.PROLONGED_INACTIVITY -> {
                 val min = rule?.params?.inactivityDurationMin
                 if (min != null) "$base ($min min)" else base
@@ -668,6 +672,9 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
                         val minutes = if (type == RuleType.PROLONGED_INACTIVITY) {
                             requestedRules.firstOrNull { it.type == type }?.params?.inactivityDurationMin
                         } else null
+                        val maxSpeed = if (type == RuleType.SPEED) {
+                            requestedRules.firstOrNull { it.type == type }?.params?.maxSpeed
+                        } else null
                         val label = when {
                             type == RuleType.GEOFENCE && geofenceRadius != null && geofenceBaseLocation != null -> {
                                 val lat = String.format(Locale.getDefault(), "%.5f", geofenceBaseLocation!!.latitude)
@@ -677,6 +684,7 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
                             type == RuleType.GEOFENCE && geofenceRadius != null -> {
                                 "${type.displayName()} (${geofenceRadius.toInt()} m) @ location unavailable"
                             }
+                            maxSpeed != null -> "${type.displayName()} (${maxSpeed.toInt()} km/h)"
                             minutes != null -> "${type.displayName()} ($minutes min)"
                             else -> type.displayName()
                         }
@@ -770,7 +778,7 @@ fun ProtectedProfileScreen(
             },
             modifier = Modifier.fillMaxWidth()
         ) { Text("Change PIN") }
-        
+
         Spacer(Modifier.height(24.dp))
         Button(onClick = onSwitchToMonitor, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)) { Text("Switch to Monitor Mode") }
 

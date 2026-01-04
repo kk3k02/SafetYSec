@@ -5,7 +5,9 @@ import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.IntentSender
 import android.content.pm.PackageManager
+import android.location.Location
 import android.os.Bundle
+import android.os.Looper
 import android.util.Log
 import android.view.MotionEvent
 import androidx.activity.ComponentActivity
@@ -116,6 +118,9 @@ private fun SafetYSecApp(
     val appState = appViewModel.state
     val context = LocalContext.current
     val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
+    val lastSpeedKmh = remember { mutableStateOf<Float?>(null) }
+    val lastGeoPoint = remember { mutableStateOf<GeoPoint?>(null) }
+    val lastLocation = remember { mutableStateOf<Location?>(null) }
 
     val permissionsToRequest = arrayOf(
         Manifest.permission.CAMERA,
@@ -170,6 +175,35 @@ private fun SafetYSecApp(
         }
     }
 
+    DisposableEffect(permissionsGranted) {
+        if (!permissionsGranted) return@DisposableEffect onDispose { }
+        val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 2000).build()
+        val callback = object : LocationCallback() {
+            override fun onLocationResult(result: LocationResult) {
+                val location = result.lastLocation ?: return
+                lastGeoPoint.value = GeoPoint(location.latitude, location.longitude)
+                val speedFromSensor = location.speed.takeIf { it >= 0f }?.let { it * 3.6f }
+                val prev = lastLocation.value
+                val speedFromDistance = if (prev != null) {
+                    val deltaNs = location.elapsedRealtimeNanos - prev.elapsedRealtimeNanos
+                    if (deltaNs > 0L) {
+                        val deltaSec = deltaNs / 1_000_000_000.0
+                        val dist = location.distanceTo(prev)
+                        if (dist >= 0f) ((dist / deltaSec) * 3.6).toFloat() else null
+                    } else null
+                } else null
+                lastSpeedKmh.value = speedFromSensor ?: speedFromDistance
+                lastLocation.value = location
+                Log.d(
+                    "SpeedMonitor",
+                    "loc: lat=${location.latitude} lon=${location.longitude} sSensor=$speedFromSensor sDist=$speedFromDistance"
+                )
+            }
+        }
+        fusedLocationClient.requestLocationUpdates(locationRequest, callback, Looper.getMainLooper())
+        onDispose { fusedLocationClient.removeLocationUpdates(callback) }
+    }
+
     // Function to get current location
     @SuppressLint("MissingPermission")
     suspend fun getCurrentLocation(): GeoPoint? {
@@ -177,16 +211,17 @@ private fun SafetYSecApp(
             if (!permissionsGranted) return null
             val location = fusedLocationClient.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, null).await()
                 ?: fusedLocationClient.lastLocation.await()
-            location?.let { GeoPoint(it.latitude, it.longitude) }
+            location?.let { GeoPoint(it.latitude, it.longitude) } ?: lastGeoPoint.value
         } catch (e: Exception) {
             Log.e("MainActivity", "Failed to get location", e)
-            null
+            lastGeoPoint.value
         }
     }
 
     // Pass location provider to ViewModel
     LaunchedEffect(Unit) {
         appViewModel.setLocationProvider { getCurrentLocation() }
+        appViewModel.setSpeedProvider { lastSpeedKmh.value }
     }
 
     LaunchedEffect(authState.isAuthenticated, appState.me?.uid) {
