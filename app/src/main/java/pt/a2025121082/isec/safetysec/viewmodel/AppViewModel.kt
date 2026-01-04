@@ -20,6 +20,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 import pt.a2025121082.isec.safetysec.data.model.*
 import pt.a2025121082.isec.safetysec.data.repository.AlertRepository
 import pt.a2025121082.isec.safetysec.data.repository.AuthRepository
@@ -228,6 +229,14 @@ class AppViewModel @Inject constructor(
                         alertsMap[pUid] = snap?.documents?.mapNotNull { it.toObject(Alert::class.java)?.copy(id = it.id) } ?: emptyList()
                         state = state.copy(monitorAlerts = alertsMap.values.flatten().sortedByDescending { it.timestamp })
                     }
+                viewModelScope.launch {
+                    try {
+                        val snap = db.collection("users").document(pUid).collection("my_alerts")
+                            .orderBy("timestamp", Query.Direction.DESCENDING).limit(20).get().await()
+                        alertsMap[pUid] = snap.documents.mapNotNull { it.toObject(Alert::class.java)?.copy(id = it.id) }
+                        state = state.copy(monitorAlerts = alertsMap.values.flatten().sortedByDescending { it.timestamp })
+                    } catch (e: Exception) { }
+                }
             }
         }
 
@@ -299,6 +308,13 @@ class AppViewModel @Inject constructor(
             .addSnapshotListener { snap, _ ->
                 state = state.copy(myAlerts = snap?.documents?.mapNotNull { it.toObject(Alert::class.java)?.copy(id = it.id) } ?: emptyList())
             }
+        viewModelScope.launch {
+            try {
+                val snap = db.collection("users").document(uid).collection("my_alerts")
+                    .orderBy("timestamp", Query.Direction.DESCENDING).limit(30).get().await()
+                state = state.copy(myAlerts = snap.documents.mapNotNull { it.toObject(Alert::class.java)?.copy(id = it.id) })
+            } catch (e: Exception) { }
+        }
     }
 
     private fun startRulesByMonitorListener(uid: String) {
