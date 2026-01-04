@@ -289,19 +289,6 @@ private fun SafetYSecApp(
             )
         }
 
-        appState.showInactivityAlertPopup?.let { minutes ->
-            AlertDialog(
-                onDismissRequest = { appViewModel.dismissInactivityPopup() },
-                title = { Text("Inactivity Alert Sent") },
-                text = { Text("Your monitor has been notified that you have been inactive for $minutes minutes.") },
-                confirmButton = {
-                    TextButton(onClick = { appViewModel.dismissInactivityPopup() }) {
-                        Text("OK")
-                    }
-                }
-            )
-        }
-
         if (appState.isRecordingPopupOpen) {
             EmergencyRecordingPopup(
                 appViewModel = appViewModel,

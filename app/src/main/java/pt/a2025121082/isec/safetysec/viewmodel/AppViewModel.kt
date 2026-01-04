@@ -55,7 +55,6 @@ data class AppUiState(
     val userInactivitySeconds: Int = 0,
     val inactivityAuthorized: Boolean = false,
     val inactivityDurationMin: Int = 0,
-    val showInactivityAlertPopup: Int? = null,
     val isSecurityUpdateSuccessful: Boolean = false,
     val isRecordingPopupOpen: Boolean = false,
     val recordingSecondsLeft: Int = 0
@@ -397,9 +396,9 @@ class AppViewModel @Inject constructor(
         inactivityJob = viewModelScope.launch {
             while (true) {
                 delay(1000)
-                if (state.inactivityAuthorized) {
+                if (state.inactivityAuthorized && state.inactivityDurationMin > 0) {
                     state = state.copy(userInactivitySeconds = state.userInactivitySeconds + 1)
-                    if (state.userInactivitySeconds >= 60) {
+                    if (state.userInactivitySeconds >= state.inactivityDurationMin * 60) {
                         triggerInactivityAlert()
                         resetInactivityTimer()
                     }
@@ -409,13 +408,8 @@ class AppViewModel @Inject constructor(
     }
 
     private fun triggerInactivityAlert() = viewModelScope.launch {
-        val me = state.me ?: return@launch
-        if (alertRepo.triggerAlert(RuleType.INACTIVITY, me, { null }, { locationProvider?.invoke() }) != null) {
-            state = state.copy(showInactivityAlertPopup = state.inactivityDurationMin)
-        }
+        triggerAlertWithTimer(RuleType.INACTIVITY)
     }
-
-    fun dismissInactivityPopup() { state = state.copy(showInactivityAlertPopup = null) }
 
     override fun onCleared() {
         super.onCleared()
