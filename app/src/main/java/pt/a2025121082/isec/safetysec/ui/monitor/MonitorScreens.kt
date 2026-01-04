@@ -1,5 +1,6 @@
 package pt.a2025121082.isec.safetysec.ui.monitor
 
+import android.content.res.Configuration
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -20,6 +21,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -689,6 +691,8 @@ fun MonitorProfileScreen(
     authVm: AuthViewModel = hiltViewModel()
 ) {
     val authSt = authVm.uiState
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     var showEditNameDialog by remember { mutableStateOf(false) }
     var editedName by remember { mutableStateOf("") }
     var nameError by remember { mutableStateOf<String?>(null) }
@@ -719,7 +723,17 @@ fun MonitorProfileScreen(
         }
     }
 
-    Column(Modifier.padding(16.dp)) {
+    Column(
+        Modifier
+            .padding(16.dp)
+            .then(
+                if (isLandscape) {
+                    Modifier.verticalScroll(rememberScrollState())
+                } else {
+                    Modifier
+                }
+            )
+    ) {
         Card(modifier = Modifier.fillMaxWidth()) {
             Row(
                 modifier = Modifier.padding(16.dp),
