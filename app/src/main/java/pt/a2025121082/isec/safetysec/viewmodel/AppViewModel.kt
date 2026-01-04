@@ -686,10 +686,13 @@ class AppViewModel @Inject constructor(
             }
         } catch (e: Exception) {
             val msg = e.message ?: "Linking failed."
-            state = if (msg.contains("Cannot monitor yourself")) {
-                state.copy(linkError = "A user cannot be their own monitor and protected user.")
-            } else {
-                state.copy(error = msg)
+            state = when {
+                msg.contains("Cannot monitor yourself") ->
+                    state.copy(linkError = "A user cannot be their own monitor and protected user.")
+                msg.contains("Invalid code") ->
+                    state.copy(linkError = "Invalid code. Please check the 6-digit code and try again.")
+                else ->
+                    state.copy(error = msg)
             }
         }
     }

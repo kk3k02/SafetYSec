@@ -18,6 +18,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -283,9 +286,11 @@ fun AlertItem(alert: Alert, sdf: SimpleDateFormat) {
 @Composable
 fun MonitorLinkScreen(vm: AppViewModel) {
     val st = vm.state
-    var code by remember { mutableStateOf("") }
+    val digits = remember { mutableStateListOf("", "", "", "", "", "") }
     var showSuccessDialog by remember { mutableStateOf(false) }
     var showErrorDialog by remember { mutableStateOf(false) }
+    val focusManager = LocalFocusManager.current
+    val focusRequesters = remember { List(6) { FocusRequester() } }
 
     LaunchedEffect(st.isLinkingSuccessful) {
         if (st.isLinkingSuccessful) {
@@ -299,23 +304,53 @@ fun MonitorLinkScreen(vm: AppViewModel) {
         }
     }
 
-    Column(Modifier.padding(16.dp)) {
-        Text("Link with Protected (OTP)", style = MaterialTheme.typography.titleLarge)
+    Column(
+        Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text(
+            "Enter the 6-digit code from the Protected user to link accounts. The code expires in 10 minutes.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = Color.Gray
+        )
         Spacer(Modifier.height(16.dp))
 
-        OutlinedTextField(
-            value = code,
-            onValueChange = { if (it.length <= 6) code = it },
-            label = { Text("6-digit code") },
+        Row(
             modifier = Modifier.fillMaxWidth(),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-        )
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            digits.forEachIndexed { index, value ->
+                OutlinedTextField(
+                    value = value,
+                    onValueChange = { input ->
+                        val digit = input.filter { it.isDigit() }.takeLast(1)
+                        digits[index] = digit
+                        if (digit.isNotEmpty() && index < 5) {
+                            focusRequesters[index + 1].requestFocus()
+                        } else if (digit.isEmpty() && index > 0) {
+                            focusRequesters[index - 1].requestFocus()
+                        } else if (digit.isNotEmpty() && index == 5) {
+                            focusManager.clearFocus()
+                        }
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .focusRequester(focusRequesters[index]),
+                    singleLine = true,
+                    label = { Text("") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    textStyle = MaterialTheme.typography.titleMedium.copy(textAlign = TextAlign.Center)
+                )
+            }
+        }
 
         Spacer(Modifier.height(16.dp))
 
         Button(
-            onClick = { vm.linkWithOtp(code) },
-            enabled = !st.isLoading && code.length == 6,
+            onClick = { vm.linkWithOtp(digits.joinToString("")) },
+            enabled = !st.isLoading && digits.all { it.isNotEmpty() },
             modifier = Modifier.fillMaxWidth()
         ) { Text("Link Account") }
 
@@ -334,7 +369,7 @@ fun MonitorLinkScreen(vm: AppViewModel) {
                 TextButton(onClick = {
                     showSuccessDialog = false
                     vm.consumeLinkingSuccess()
-                    code = ""
+                    for (i in digits.indices) digits[i] = ""
                 }) {
                     Text("OK")
                 }
