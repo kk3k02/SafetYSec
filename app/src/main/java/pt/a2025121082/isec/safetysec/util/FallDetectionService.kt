@@ -15,33 +15,48 @@ import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.*
 import pt.a2025121082.isec.safetysec.data.model.RuleType
 import pt.a2025121082.isec.safetysec.data.repository.AlertRepository
+import pt.a2025121082.isec.safetysec.data.repository.AuthRepository
+import pt.a2025121082.isec.safetysec.data.repository.MonitoringRepository
+import pt.a2025121082.isec.safetysec.data.model.TimeWindow
 import javax.inject.Inject
+import java.util.Calendar
 import kotlin.math.sqrt
 
 @AndroidEntryPoint
 class FallDetectionService : Service(), SensorEventListener {
 
     @Inject lateinit var alertRepo: AlertRepository
+    @Inject lateinit var authRepo: AuthRepository
+    @Inject lateinit var monitoringRepo: MonitoringRepository
 
     private lateinit var sensorManager: SensorManager
     private var accelerometer: Sensor? = null
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-    
-    // TEST MODE: Low threshold for easy triggering
-    private val TEST_TRIGGER_THRESHOLD = 15.0f 
-    private var isProcessing = false
+
+    private val fallTriggerThreshold = 15.0f
+    private val fallCooldownMs = 12_000L
+    private var lastFallTriggerAtMs: Long = 0L
+    private var fallCheckInProgress = false
+    private var lastDebugLogAtMs: Long = 0L
 
     override fun onCreate() {
         super.onCreate()
-        Log.d("FallDetection", "Service started in TEST MODE")
+        Log.d("FallDetection", "Service started")
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
         accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
-        
+        if (accelerometer == null) {
+            Log.w("FallDetection", "Accelerometer not available")
+        } else {
+            Log.d("FallDetection", "Accelerometer available")
+        }
+
         createNotificationChannel()
-        startForeground(1, createNotification("Monitoring for falls (Test Mode active)"))
-        
+        startForeground(1, createNotification("Monitoring for falls"))
+        Log.d("FallDetection", "Foreground notification started")
+
         accelerometer?.let {
-            sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_UI)
+            val registered = sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
+            Log.d("FallDetection", "Accelerometer listener registered=$registered")
         }
     }
 
@@ -52,20 +67,15 @@ class FallDetectionService : Service(), SensorEventListener {
         val y = event.values[1]
         val z = event.values[2]
         val magnitude = sqrt(x * x + y * y + z * z)
+        val now = System.currentTimeMillis()
+        if (now - lastDebugLogAtMs >= 1000L) {
+            Log.d("FallDetection", "Accel magnitude=$magnitude threshold=$fallTriggerThreshold")
+            lastDebugLogAtMs = now
+        }
 
-        // If movement exceeds threshold and we aren't already showing a popup
-        if (!isProcessing && magnitude > TEST_TRIGGER_THRESHOLD) {
-            Log.i("FallDetection", "!!! TRIGGER !!! Magnitude: $magnitude")
-            isProcessing = true
-            
-            serviceScope.launch {
-                // This triggers the 10s countdown window on your PHONE SCREEN
-                alertRepo.emitDetectionEvent(RuleType.FALL)
-                
-                // Pause detection for a while to let user handle the popup
-                delay(15000)
-                isProcessing = false
-            }
+        if (magnitude > fallTriggerThreshold) {
+            Log.d("FallDetection", "Fall candidate magnitude=$magnitude")
+            maybeTriggerFall()
         }
     }
 
@@ -73,9 +83,72 @@ class FallDetectionService : Service(), SensorEventListener {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
+        Log.d("FallDetection", "Service stopped")
         sensorManager.unregisterListener(this)
         serviceScope.cancel()
         super.onDestroy()
+    }
+
+    private fun maybeTriggerFall() {
+        val now = System.currentTimeMillis()
+        if (fallCheckInProgress) {
+            Log.d("FallDetection", "Skip: check in progress")
+            return
+        }
+        if (now - lastFallTriggerAtMs < fallCooldownMs) {
+            Log.d("FallDetection", "Skip: cooldown active")
+            return
+        }
+        fallCheckInProgress = true
+
+        serviceScope.launch(Dispatchers.IO) {
+            try {
+                if (!isFallAuthorizedAndWithinWindow()) return@launch
+                lastFallTriggerAtMs = System.currentTimeMillis()
+                Log.i("FallDetection", "Fall detected and authorized")
+                alertRepo.emitDetectionEvent(RuleType.FALL)
+            } catch (e: Exception) {
+                Log.e("FallDetection", "Fall trigger failed: ${e.message}")
+            } finally {
+                fallCheckInProgress = false
+            }
+        }
+    }
+
+    private suspend fun isFallAuthorizedAndWithinWindow(): Boolean {
+        val uid = authRepo.getCurrentUid() ?: run {
+            Log.w("FallDetection", "Skip: no authenticated user")
+            return false
+        }
+        val me = authRepo.getUserProfile(uid)
+        if (!me.roles.contains("Protected")) {
+            Log.w("FallDetection", "Skip: not in Protected role")
+            return false
+        }
+
+        val bundles = monitoringRepo.getRulesForProtected(uid)
+        val fallAuthorized = bundles.any { it.authorizedTypes.contains(RuleType.FALL) }
+        if (!fallAuthorized) {
+            Log.w("FallDetection", "Skip: FALL not authorized")
+            return false
+        }
+
+        val windows = monitoringRepo.listTimeWindows(uid)
+        val withinWindow = isWithinAnyWindow(windows)
+        if (!withinWindow) {
+            Log.w("FallDetection", "Skip: outside time window")
+        }
+        return withinWindow
+    }
+
+    private fun isWithinAnyWindow(windows: List<TimeWindow>): Boolean {
+        if (windows.isEmpty()) return true
+        val cal = Calendar.getInstance()
+        val day = ((cal.get(Calendar.DAY_OF_WEEK) + 5) % 7) + 1
+        val hour = cal.get(Calendar.HOUR_OF_DAY)
+        return windows.any { window ->
+            day in window.daysOfWeek && hour in window.startHour until window.endHour
+        }
     }
 
     private fun createNotificationChannel() {
@@ -96,3 +169,4 @@ class FallDetectionService : Service(), SensorEventListener {
             .build()
     }
 }
+
