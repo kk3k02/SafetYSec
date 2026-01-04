@@ -54,6 +54,7 @@ data class AppUiState(
     val isRequestSuccessful: Boolean = false,
     val isAdditionSuccessful: Boolean = false,
     val rulesForSelectedProtected: MonitorRulesBundle? = null,
+    val shownRuleRequestKeys: Set<String> = emptySet(),
     val isCancelWindowOpen: Boolean = false,
     val cancelAlertType: RuleType? = null,
     val cancelSecondsLeft: Int = 0,
@@ -98,6 +99,7 @@ class AppViewModel @Inject constructor(
     private var profileListener: ListenerRegistration? = null
     private var myAlertsListener: ListenerRegistration? = null
     private var rulesByMonitorListener: ListenerRegistration? = null
+    private var selectedProtectedRulesListener: ListenerRegistration? = null
     private var monitorPopupListener: ListenerRegistration? = null
     private val protectedAlertsListeners = mutableMapOf<String, ListenerRegistration>()
     private val alertsMap = mutableMapOf<String, List<Alert>>()
@@ -545,38 +547,7 @@ class AppViewModel @Inject constructor(
         rulesByMonitorListener = db.collection("users").document(uid).collection("rulesByMonitor")
             .addSnapshotListener { snap, _ ->
                 Log.d("AppViewModel", "rulesByMonitor snapshot for $uid: ${snap?.size() ?: 0} docs")
-                val bundles = snap?.documents?.map { d ->
-                    val storedAreas = (d.get("geofenceAreas") as? List<*>)
-                        ?.mapNotNull { it as? Map<*, *> }
-                        ?.mapNotNull {
-                            val lat = (it["latitude"] as? Number)?.toDouble() ?: return@mapNotNull null
-                            val lon = (it["longitude"] as? Number)?.toDouble() ?: return@mapNotNull null
-                            val radius = (it["radiusMeters"] as? Number)?.toDouble() ?: return@mapNotNull null
-                            GeofenceArea(latitude = lat, longitude = lon, radiusMeters = radius)
-                        }
-                    val requested = (d.get("requested") as? List<*>)
-                        ?.mapNotNull { it as? Map<*, *> }
-                        ?.mapNotNull {
-                            val typeStr = it["type"] as? String ?: return@mapNotNull null
-                            val type = runCatching { RuleType.valueOf(typeStr) }.getOrNull() ?: return@mapNotNull null
-                            val paramsMap = it["params"] as? Map<*, *>
-                            val params = RuleParams(
-                                maxSpeed = (paramsMap?.get("maxSpeed") as? Number)?.toFloat(),
-                                inactivityDurationMin = (paramsMap?.get("inactivityDurationMin") as? Number)?.toInt(),
-                                geofenceAreas = if (type == RuleType.GEOFENCE) storedAreas else null,
-                                geofenceRadiusMeters = (paramsMap?.get("geofenceRadiusMeters") as? Number)?.toDouble()
-                            )
-                            MonitoringRule(type = type, params = params)
-                        } ?: emptyList()
-
-                    MonitorRulesBundle(
-                        monitorId = d.id,
-                        requested = requested,
-                        authorizedTypes = (d.get("authorizedTypes") as? List<*>)
-                            ?.mapNotNull { runCatching { RuleType.valueOf(it as String) }.getOrNull() }
-                            ?: emptyList()
-                    )
-                } ?: emptyList()
+                val bundles = snap?.documents?.mapNotNull { d -> parseRulesBundle(d) } ?: emptyList()
 
                 state = state.copy(
                     monitorRuleBundles = bundles,
@@ -590,6 +561,33 @@ class AppViewModel @Inject constructor(
                     checkSpeedOnce()
                 }
             }
+    }
+
+    fun observeRulesForProtected(protectedUid: String) {
+        val monitorUid = authRepo.getCurrentUid() ?: return
+        selectedProtectedRulesListener?.remove()
+        selectedProtectedRulesListener = db.collection("users").document(protectedUid)
+            .collection("rulesByMonitor").document(monitorUid)
+            .addSnapshotListener { snap, _ ->
+                if (snap != null && snap.exists()) {
+                    state = state.copy(rulesForSelectedProtected = parseRulesBundle(snap))
+                } else {
+                    state = state.copy(rulesForSelectedProtected = null)
+                }
+            }
+        viewModelScope.launch {
+            try {
+                val snap = db.collection("users").document(protectedUid)
+                    .collection("rulesByMonitor").document(monitorUid).get().await()
+                state = state.copy(rulesForSelectedProtected = parseRulesBundle(snap))
+            } catch (e: Exception) { }
+        }
+    }
+
+    fun clearSelectedProtectedRules() {
+        selectedProtectedRulesListener?.remove()
+        selectedProtectedRulesListener = null
+        state = state.copy(rulesForSelectedProtected = null)
     }
 
     private suspend fun refreshProtectedMetadata(uid: String) {
@@ -624,15 +622,21 @@ class AppViewModel @Inject constructor(
         profileListener?.remove()
         myAlertsListener?.remove()
         rulesByMonitorListener?.remove()
+        selectedProtectedRulesListener?.remove()
         monitorPopupListener?.remove()
         stopProtectedMonitoring()
         protectedAlertsListeners.values.forEach { it.remove() }
         protectedAlertsListeners.clear()
         alertsMap.clear()
         rulesByMonitorListener = null
+        selectedProtectedRulesListener = null
         geofenceJob = null
         lastGeofenceInside = null
         state = AppUiState()
+    }
+
+    fun markRuleRequestHandled(key: String) {
+        state = state.copy(shownRuleRequestKeys = state.shownRuleRequestKeys + key)
     }
 
     fun consumeSecurityUpdateSuccess() { state = state.copy(isSecurityUpdateSuccessful = false) }
@@ -789,6 +793,40 @@ class AppViewModel @Inject constructor(
             sin(dLon / 2) * sin(dLon / 2)
         val c = 2 * atan2(sqrt(a), sqrt(1 - a))
         return r * c
+    }
+
+    private fun parseRulesBundle(d: DocumentSnapshot): MonitorRulesBundle? {
+        val storedAreas = (d.get("geofenceAreas") as? List<*>)
+            ?.mapNotNull { it as? Map<*, *> }
+            ?.mapNotNull {
+                val lat = (it["latitude"] as? Number)?.toDouble() ?: return@mapNotNull null
+                val lon = (it["longitude"] as? Number)?.toDouble() ?: return@mapNotNull null
+                val radius = (it["radiusMeters"] as? Number)?.toDouble() ?: return@mapNotNull null
+                GeofenceArea(latitude = lat, longitude = lon, radiusMeters = radius)
+            }
+
+        val requested = (d.get("requested") as? List<*>)
+            ?.mapNotNull { it as? Map<*, *> }
+            ?.mapNotNull {
+                val typeStr = it["type"] as? String ?: return@mapNotNull null
+                val type = runCatching { RuleType.valueOf(typeStr) }.getOrNull() ?: return@mapNotNull null
+                val paramsMap = it["params"] as? Map<*, *>
+                val params = RuleParams(
+                    maxSpeed = (paramsMap?.get("maxSpeed") as? Number)?.toFloat(),
+                    inactivityDurationMin = (paramsMap?.get("inactivityDurationMin") as? Number)?.toInt(),
+                    geofenceAreas = if (type == RuleType.GEOFENCE) storedAreas else null,
+                    geofenceRadiusMeters = (paramsMap?.get("geofenceRadiusMeters") as? Number)?.toDouble()
+                )
+                MonitoringRule(type = type, params = params)
+            } ?: emptyList()
+
+        return MonitorRulesBundle(
+            monitorId = d.id,
+            requested = requested,
+            authorizedTypes = (d.get("authorizedTypes") as? List<*>)
+                ?.mapNotNull { runCatching { RuleType.valueOf(it as String) }.getOrNull() }
+                ?: emptyList()
+        )
     }
 
     private fun triggerInactivityAlert() = viewModelScope.launch {

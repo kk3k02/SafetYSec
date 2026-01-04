@@ -452,7 +452,6 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
     var showRemovalSuccessDialog by remember { mutableStateOf(false) }
     var showUpdateSuccessDialog by remember { mutableStateOf(false) }
     var pendingRequestMonitor by remember { mutableStateOf<Pair<User, List<MonitoringRule>>?>(null) }
-    var shownRequestKeys by remember { mutableStateOf(setOf<String>()) }
     val grantableRules = remember { RuleType.values().filterNot { it == RuleType.INACTIVITY } }
     var geofenceBaseLocation by remember { mutableStateOf<GeoPoint?>(null) }
     val scope = rememberCoroutineScope()
@@ -491,7 +490,7 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
         if (st.isRemovalSuccessful) showRemovalSuccessDialog = true
     }
 
-    LaunchedEffect(st.monitorRuleBundles, st.myLinkedMonitors, shownRequestKeys) {
+    LaunchedEffect(st.monitorRuleBundles, st.myLinkedMonitors, st.shownRuleRequestKeys) {
         st.myLinkedMonitors.forEach { monitor ->
             val bundle = st.monitorRuleBundles.find { it.monitorId == monitor.uid }
             if (bundle != null && bundle.requested.isNotEmpty()) {
@@ -500,7 +499,7 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
                 val notYetAuthorized = requestedTypes.filter { !bundle.authorizedTypes.contains(it) }
                 if (notYetAuthorized.isNotEmpty()) {
                     val requestKey = monitor.uid + ":" + requestedTypes.sorted().joinToString(",")
-                    if (!shownRequestKeys.contains(requestKey)) {
+                    if (!st.shownRuleRequestKeys.contains(requestKey)) {
                         pendingRequestMonitor = monitor to requestedRules
                     }
                 }
@@ -572,12 +571,16 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(text = ruleLabel(type, bundle), style = MaterialTheme.typography.bodyMedium)
-                                Switch(
-                                    checked = authorized.contains(type),
-                                    onCheckedChange = { on -> if (on) authorized.add(type) else authorized.remove(type) }
-                                )
-                            }
+                            val isAuthorized = authorized.contains(type)
+                            Text(text = ruleLabel(type, bundle), style = MaterialTheme.typography.bodyMedium)
+                            Switch(
+                                checked = isAuthorized,
+                                onCheckedChange = { on ->
+                                    if (!on) authorized.remove(type)
+                                },
+                                enabled = isAuthorized
+                            )
+                        }
                         }
                         Spacer(Modifier.height(8.dp))
                         Button(
@@ -668,7 +671,7 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
         val canAccept = !requestedTypes.contains(RuleType.GEOFENCE) || geofenceBaseLocation != null
         AlertDialog(
             onDismissRequest = {
-                shownRequestKeys = shownRequestKeys + requestKey
+                vm.markRuleRequestHandled(requestKey)
                 pendingRequestMonitor = null
             },
             title = { Text("New Access Request") },
@@ -723,14 +726,14 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
                         }
                         if (requestedTypes.contains(RuleType.GEOFENCE) && geofenceAreas == null) return@launch
                         vm.saveAuthorizations(monitor.uid, requestedTypes, inactivityMin, geofenceAreas)
-                        shownRequestKeys = shownRequestKeys + requestKey
+                        vm.markRuleRequestHandled(requestKey)
                         pendingRequestMonitor = null
                     }
                 }, enabled = canAccept) { Text("Accept All") }
             },
             dismissButton = {
                 TextButton(onClick = {
-                    shownRequestKeys = shownRequestKeys + requestKey
+                    vm.markRuleRequestHandled(requestKey)
                     pendingRequestMonitor = null
                 }) { Text("Decline") }
             }

@@ -341,7 +341,7 @@ fun MonitorRulesScreen(vm: AppViewModel) {
     }
 
     LaunchedEffect(selectedUser) {
-        selectedUser?.let { vm.loadRulesForProtected(it.uid) }
+        selectedUser?.let { vm.observeRulesForProtected(it.uid) } ?: vm.clearSelectedProtectedRules()
     }
 
     LazyColumn(Modifier.padding(16.dp)) {
