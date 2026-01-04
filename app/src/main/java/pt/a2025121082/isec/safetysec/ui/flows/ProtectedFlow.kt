@@ -68,11 +68,13 @@ fun ProtectedFlow(
                     IconButton(onClick = onProfile) {
                         Icon(Icons.Default.Person, contentDescription = "Profile")
                     }
-                    IconButton(
-                        onClick = { showClearDialog.value = true },
-                        enabled = appViewModel.state.myAlerts.isNotEmpty()
-                    ) {
-                        Icon(Icons.Default.Delete, contentDescription = "Clear history")
+                    if (currentRoute == PRoutes.History) {
+                        IconButton(
+                            onClick = { showClearDialog.value = true },
+                            enabled = appViewModel.state.myAlerts.isNotEmpty()
+                        ) {
+                            Icon(Icons.Default.Delete, contentDescription = "Clear history")
+                        }
                     }
                     IconButton(onClick = onLogout) {
                         Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = "Logout")
