@@ -528,7 +528,6 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
         modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        item { Spacer(Modifier.height(8.dp)) }
         item {
             Button(
                 onClick = { vm.generateOtp() },
