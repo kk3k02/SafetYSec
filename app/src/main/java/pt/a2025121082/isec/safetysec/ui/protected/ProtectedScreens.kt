@@ -285,20 +285,20 @@ fun ProtectedWindowsScreen(vm: AppViewModel) {
     }
 
     Scaffold(
+        contentWindowInsets = WindowInsets(0),
         floatingActionButton = {
             FloatingActionButton(onClick = { showAddDialog = true }) {
                 Icon(Icons.Default.Add, contentDescription = "Add Window")
             }
         }
     ) { padding ->
-        Column(Modifier.padding(padding).padding(start = 16.dp, end = 16.dp, bottom = 16.dp)) {
+        Column(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp)) {
             if (st.timeWindows.isEmpty()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text("No time windows defined.", color = Color.Gray)
                 }
             } else {
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    item { Spacer(Modifier.height(8.dp)) }
                     items(st.timeWindows) { window ->
                         TimeWindowCard(window, onRemove = { vm.removeTimeWindow(window.id) })
                     }
