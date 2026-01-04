@@ -415,11 +415,8 @@ fun MonitorRulesScreen(vm: AppViewModel) {
         selectedUser?.let { vm.observeRulesForProtected(it.uid) } ?: vm.clearSelectedProtectedRules()
     }
 
-    LazyColumn(Modifier.padding(16.dp)) {
+    LazyColumn(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp)) {
         item {
-            Text("Monitoring Configuration", style = MaterialTheme.typography.titleLarge)
-            Spacer(Modifier.height(16.dp))
-
             ExposedDropdownMenuBox(
                 expanded = expanded,
                 onExpandedChange = { expanded = !expanded }
