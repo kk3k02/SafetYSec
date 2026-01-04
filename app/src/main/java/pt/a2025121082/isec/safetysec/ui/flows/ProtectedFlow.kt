@@ -24,6 +24,7 @@ import pt.a2025121082.isec.safetysec.ui.protected.ProtectedHistoryScreen
 import pt.a2025121082.isec.safetysec.ui.protected.ProtectedMonitorsAndRulesScreen
 import pt.a2025121082.isec.safetysec.ui.protected.ProtectedProfileScreen
 import pt.a2025121082.isec.safetysec.ui.protected.ProtectedWindowsScreen
+import pt.a2025121082.isec.safetysec.data.model.RuleType
 import pt.a2025121082.isec.safetysec.viewmodel.AppViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -37,6 +38,9 @@ fun ProtectedFlow(
     val nav = rememberNavController()
     val entry by nav.currentBackStackEntryAsState()
     val currentRoute = entry?.destination?.route
+    val canTriggerPanic = appViewModel.state.monitorRuleBundles.any { bundle ->
+        bundle.authorizedTypes.contains(RuleType.PANIC)
+    }
 
     LaunchedEffect(Unit) { appViewModel.setActiveMode(pt.a2025121082.isec.safetysec.viewmodel.AppMode.PROTECTED) }
 
@@ -105,7 +109,14 @@ fun ProtectedFlow(
         },
         floatingActionButton = {
             if (currentRoute != PRoutes.Windows) {
-                FloatingActionButton(onClick = { appViewModel.triggerPanic() }) {
+                FloatingActionButton(
+                    onClick = { if (canTriggerPanic) appViewModel.triggerPanic() },
+                    containerColor = if (canTriggerPanic) {
+                        FloatingActionButtonDefaults.containerColor
+                    } else {
+                        MaterialTheme.colorScheme.surfaceVariant
+                    }
+                ) {
                     Icon(Icons.Filled.Warning, contentDescription = "Panic")
                 }
             }
