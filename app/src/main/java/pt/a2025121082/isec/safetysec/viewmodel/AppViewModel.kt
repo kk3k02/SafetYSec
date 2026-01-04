@@ -225,8 +225,10 @@ class AppViewModel @Inject constructor(
             if (!protectedAlertsListeners.containsKey(pUid)) {
                 protectedAlertsListeners[pUid] = db.collection("users").document(pUid).collection("my_alerts")
                     .orderBy("timestamp", Query.Direction.DESCENDING).limit(20)
-                    .addSnapshotListener { snap, _ ->
-                        alertsMap[pUid] = snap?.documents?.mapNotNull { it.toObject(Alert::class.java)?.copy(id = it.id) } ?: emptyList()
+                    .addSnapshotListener(MetadataChanges.INCLUDE) { snap, _ ->
+                        if (snap == null) return@addSnapshotListener
+                        if (snap.metadata.isFromCache && snap.isEmpty) return@addSnapshotListener
+                        alertsMap[pUid] = snap.documents.mapNotNull { it.toObject(Alert::class.java)?.copy(id = it.id) }
                         state = state.copy(monitorAlerts = alertsMap.values.flatten().sortedByDescending { it.timestamp })
                     }
                 viewModelScope.launch {
@@ -274,6 +276,11 @@ class AppViewModel @Inject constructor(
                     if (me.roles.contains("Protected")) {
                         Log.d("AppViewModel", "Protected role detected, starting rules listener for ${me.uid}")
                         startMyAlertsListener(me.uid)
+                        viewModelScope.launch {
+                            try {
+                                state = state.copy(myAlerts = alertRepo.getProtectedAlertHistory(me.uid))
+                            } catch (e: Exception) { }
+                        }
                         startRulesByMonitorListener(me.uid)
                         viewModelScope.launch { refreshProtectedMetadata(me.uid) }
                         startInactivityTimer()
@@ -282,6 +289,14 @@ class AppViewModel @Inject constructor(
                     if (isMonitor) {
                         viewModelScope.launch {
                             state = state.copy(linkedProtectedUsers = me.protectedUsers.map { authRepo.getUserProfile(it) })
+                        }
+                        viewModelScope.launch {
+                            try {
+                                val alerts = me.protectedUsers.flatMap { uid ->
+                                    alertRepo.getProtectedAlertHistory(uid)
+                                }
+                                state = state.copy(monitorAlerts = alerts.sortedByDescending { it.timestamp })
+                            } catch (e: Exception) { }
                         }
                         startMonitoringDashboard(me.uid)
                     } else if (wasMonitor) {
@@ -305,8 +320,10 @@ class AppViewModel @Inject constructor(
         myAlertsListener?.remove()
         myAlertsListener = db.collection("users").document(uid).collection("my_alerts")
             .orderBy("timestamp", Query.Direction.DESCENDING).limit(30)
-            .addSnapshotListener { snap, _ ->
-                state = state.copy(myAlerts = snap?.documents?.mapNotNull { it.toObject(Alert::class.java)?.copy(id = it.id) } ?: emptyList())
+            .addSnapshotListener(MetadataChanges.INCLUDE) { snap, _ ->
+                if (snap == null) return@addSnapshotListener
+                if (snap.metadata.isFromCache && snap.isEmpty) return@addSnapshotListener
+                state = state.copy(myAlerts = snap.documents.mapNotNull { it.toObject(Alert::class.java)?.copy(id = it.id) })
             }
         viewModelScope.launch {
             try {
