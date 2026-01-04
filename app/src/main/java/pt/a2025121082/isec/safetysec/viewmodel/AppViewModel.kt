@@ -79,6 +79,7 @@ class AppViewModel @Inject constructor(
 
     private var profileListener: ListenerRegistration? = null
     private var myAlertsListener: ListenerRegistration? = null
+    private var rulesByMonitorListener: ListenerRegistration? = null
     private var monitorPopupListener: ListenerRegistration? = null
     private val protectedAlertsListeners = mutableMapOf<String, ListenerRegistration>()
     private val alertsMap = mutableMapOf<String, List<Alert>>()
@@ -257,7 +258,9 @@ class AppViewModel @Inject constructor(
                     state = state.copy(me = me, isLoading = false)
 
                     if (me.roles.contains("Protected")) {
+                        Log.d("AppViewModel", "Protected role detected, starting rules listener for ${me.uid}")
                         startMyAlertsListener(me.uid)
+                        startRulesByMonitorListener(me.uid)
                         viewModelScope.launch { refreshProtectedMetadata(me.uid) }
                         startInactivityTimer()
                     }
@@ -290,6 +293,41 @@ class AppViewModel @Inject constructor(
             }
     }
 
+    private fun startRulesByMonitorListener(uid: String) {
+        rulesByMonitorListener?.remove()
+        rulesByMonitorListener = db.collection("users").document(uid).collection("rulesByMonitor")
+            .addSnapshotListener { snap, _ ->
+                Log.d("AppViewModel", "rulesByMonitor snapshot for $uid: ${snap?.size() ?: 0} docs")
+                val bundles = snap?.documents?.map { d ->
+                    val requested = (d.get("requested") as? List<*>)
+                        ?.mapNotNull { it as? Map<*, *> }
+                        ?.mapNotNull {
+                            val typeStr = it["type"] as? String ?: return@mapNotNull null
+                            val type = runCatching { RuleType.valueOf(typeStr) }.getOrNull() ?: return@mapNotNull null
+                            val paramsMap = it["params"] as? Map<*, *>
+                            val params = RuleParams(
+                                maxSpeed = (paramsMap?.get("maxSpeed") as? Number)?.toFloat(),
+                                inactivityDurationMin = (paramsMap?.get("inactivityDurationMin") as? Number)?.toInt()
+                            )
+                            MonitoringRule(type = type, params = params)
+                        } ?: emptyList()
+
+                    MonitorRulesBundle(
+                        monitorId = d.id,
+                        requested = requested,
+                        authorizedTypes = (d.get("authorizedTypes") as? List<*>)
+                            ?.mapNotNull { runCatching { RuleType.valueOf(it as String) }.getOrNull() }
+                            ?: emptyList()
+                    )
+                } ?: emptyList()
+
+                state = state.copy(
+                    monitorRuleBundles = bundles,
+                    inactivityAuthorized = bundles.any { it.authorizedTypes.contains(RuleType.INACTIVITY) }
+                )
+            }
+    }
+
     private suspend fun refreshProtectedMetadata(uid: String) {
         try {
             val bundles = monitoringRepo.getRulesForProtected(uid)
@@ -317,10 +355,12 @@ class AppViewModel @Inject constructor(
     fun clear() {
         profileListener?.remove()
         myAlertsListener?.remove()
+        rulesByMonitorListener?.remove()
         monitorPopupListener?.remove()
         protectedAlertsListeners.values.forEach { it.remove() }
         protectedAlertsListeners.clear()
         alertsMap.clear()
+        rulesByMonitorListener = null
         state = AppUiState()
     }
 
