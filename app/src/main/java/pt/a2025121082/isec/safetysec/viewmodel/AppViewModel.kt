@@ -683,9 +683,14 @@ class AppViewModel @Inject constructor(
         geofenceAreas: List<GeofenceArea>?
     ) = viewModelScope.launch {
         try {
-            monitoringRepo.saveAuthorizations(state.me!!.uid, m, a, i, geofenceAreas)
-            if (i != null) {
-                authRepo.updateInactivityDuration(i)
+            val inactivityMinutes = if (a.contains(RuleType.PROLONGED_INACTIVITY)) {
+                i
+            } else {
+                0
+            }
+            monitoringRepo.saveAuthorizations(state.me!!.uid, m, a, inactivityMinutes, geofenceAreas)
+            if (inactivityMinutes != null) {
+                authRepo.updateInactivityDuration(inactivityMinutes)
             }
             if (geofenceAreas != null) {
                 lastGeofenceInside = true
