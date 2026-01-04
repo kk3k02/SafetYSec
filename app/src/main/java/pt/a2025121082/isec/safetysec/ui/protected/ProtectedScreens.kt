@@ -40,6 +40,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.delay
 import pt.a2025121082.isec.safetysec.data.model.Alert
+import pt.a2025121082.isec.safetysec.data.model.MonitoringRule
 import pt.a2025121082.isec.safetysec.data.model.RuleType
 import pt.a2025121082.isec.safetysec.data.model.TimeWindow
 import pt.a2025121082.isec.safetysec.data.model.User
@@ -437,7 +438,7 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
     var otpToShow by remember { mutableStateOf<String?>(null) }
     var showRemovalSuccessDialog by remember { mutableStateOf(false) }
     var showUpdateSuccessDialog by remember { mutableStateOf(false) }
-    var pendingRequestMonitor by remember { mutableStateOf<Pair<User, List<RuleType>>?>(null) }
+    var pendingRequestMonitor by remember { mutableStateOf<Pair<User, List<MonitoringRule>>?>(null) }
     var shownRequestKeys by remember { mutableStateOf(setOf<String>()) }
     val grantableRules = remember { RuleType.values().filterNot { it == RuleType.INACTIVITY } }
 
@@ -449,12 +450,13 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
         st.myLinkedMonitors.forEach { monitor ->
             val bundle = st.monitorRuleBundles.find { it.monitorId == monitor.uid }
             if (bundle != null && bundle.requested.isNotEmpty()) {
-                val requestedTypes = bundle.requested.map { it.type }
+                val requestedRules = bundle.requested
+                val requestedTypes = requestedRules.map { it.type }
                 val notYetAuthorized = requestedTypes.filter { !bundle.authorizedTypes.contains(it) }
                 if (notYetAuthorized.isNotEmpty()) {
                     val requestKey = monitor.uid + ":" + requestedTypes.sorted().joinToString(",")
                     if (!shownRequestKeys.contains(requestKey)) {
-                        pendingRequestMonitor = monitor to requestedTypes
+                        pendingRequestMonitor = monitor to requestedRules
                     }
                 }
             }
@@ -603,7 +605,8 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
         )
     }
 
-    pendingRequestMonitor?.let { (monitor, requestedTypes) ->
+    pendingRequestMonitor?.let { (monitor, requestedRules) ->
+        val requestedTypes = requestedRules.map { it.type }
         val requestKey = remember(monitor.uid, requestedTypes) {
             monitor.uid + ":" + requestedTypes.sorted().joinToString(",")
         }
@@ -624,7 +627,9 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
             },
             confirmButton = {
                 Button(onClick = {
-                    vm.saveAuthorizations(monitor.uid, requestedTypes, null)
+                    val inactivityMin = requestedRules.firstOrNull { it.type == RuleType.PROLONGED_INACTIVITY }
+                        ?.params?.inactivityDurationMin
+                    vm.saveAuthorizations(monitor.uid, requestedTypes, inactivityMin)
                     shownRequestKeys = shownRequestKeys + requestKey
                     pendingRequestMonitor = null
                 }) { Text("Accept All") }

@@ -428,6 +428,9 @@ class AppViewModel @Inject constructor(
     fun saveAuthorizations(m: String, a: List<RuleType>, i: Int?) = viewModelScope.launch {
         try {
             monitoringRepo.saveAuthorizations(state.me!!.uid, m, a, i)
+            if (i != null) {
+                authRepo.updateInactivityDuration(i)
+            }
             refreshProtectedMetadata(state.me!!.uid)
         } catch (e: Exception) {}
     }
