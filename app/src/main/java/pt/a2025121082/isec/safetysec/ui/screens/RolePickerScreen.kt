@@ -10,6 +10,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import android.content.res.Configuration
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -22,6 +24,9 @@ fun RolePickerScreen(
     onGoProtected: () -> Unit,
     onGoMonitor: () -> Unit
 ) {
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -55,23 +60,48 @@ fun RolePickerScreen(
         Spacer(Modifier.height(48.dp))
 
         // Role Selection Cards
-        RoleCard(
-            title = "Protected Mode",
-            description = "You are the one being protected. Setup safety rules and emergency contacts.",
-            icon = Icons.Default.Shield,
-            color = MaterialTheme.colorScheme.primaryContainer,
-            onClick = onGoProtected
-        )
+        if (isLandscape) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                RoleCard(
+                    title = "Monitor Mode",
+                    description = "You are supervising others. Receive alerts and monitor safety in real-time.",
+                    icon = Icons.Default.Visibility,
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                    onClick = onGoMonitor,
+                    modifier = Modifier.weight(1f)
+                )
 
-        Spacer(Modifier.height(16.dp))
+                RoleCard(
+                    title = "Protected Mode",
+                    description = "You are the one being protected. Setup safety rules and emergency contacts.",
+                    icon = Icons.Default.Shield,
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    onClick = onGoProtected,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        } else {
+            RoleCard(
+                title = "Protected Mode",
+                description = "You are the one being protected. Setup safety rules and emergency contacts.",
+                icon = Icons.Default.Shield,
+                color = MaterialTheme.colorScheme.primaryContainer,
+                onClick = onGoProtected
+            )
 
-        RoleCard(
-            title = "Monitor Mode",
-            description = "You are supervising others. Receive alerts and monitor safety in real-time.",
-            icon = Icons.Default.Visibility,
-            color = MaterialTheme.colorScheme.secondaryContainer,
-            onClick = onGoMonitor
-        )
+            Spacer(Modifier.height(16.dp))
+
+            RoleCard(
+                title = "Monitor Mode",
+                description = "You are supervising others. Receive alerts and monitor safety in real-time.",
+                icon = Icons.Default.Visibility,
+                color = MaterialTheme.colorScheme.secondaryContainer,
+                onClick = onGoMonitor
+            )
+        }
         
         Spacer(Modifier.height(32.dp))
         
@@ -92,11 +122,12 @@ private fun RoleCard(
     description: String,
     icon: ImageVector,
     color: androidx.compose.ui.graphics.Color,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     Card(
         onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = color),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
