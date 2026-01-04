@@ -434,6 +434,7 @@ fun AddTimeWindowDialog(onDismiss: () -> Unit, onSave: (List<Int>, Int, Int) -> 
 fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
     val st = vm.state
     var showOtpDialog by remember { mutableStateOf(false) }
+    var otpToShow by remember { mutableStateOf<String?>(null) }
     var showRemovalSuccessDialog by remember { mutableStateOf(false) }
     var showUpdateSuccessDialog by remember { mutableStateOf(false) }
     var pendingRequestMonitor by remember { mutableStateOf<Pair<User, List<RuleType>>?>(null) }
@@ -460,7 +461,10 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
     }
 
     LaunchedEffect(st.myOtp) {
-        if (st.myOtp != null) showOtpDialog = true
+        if (st.myOtp != null) {
+            otpToShow = st.myOtp
+            showOtpDialog = true
+        }
     }
 
     LazyColumn(
@@ -548,15 +552,18 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
         )
     }
 
-    if (showOtpDialog && st.myOtp != null) {
+    if (showOtpDialog && otpToShow != null) {
         AlertDialog(
-            onDismissRequest = { showOtpDialog = false },
+            onDismissRequest = {
+                showOtpDialog = false
+                otpToShow = null
+            },
             title = { Text("Association Code") },
             text = {
                 Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("Share this 6-digit code with your Monitor.")
                     Spacer(Modifier.height(16.dp))
-                    val otp = st.myOtp
+                    val otp = otpToShow ?: ""
                     Text(
                         text = otp,
                         style = MaterialTheme.typography.displayMedium,
@@ -567,7 +574,12 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
                     Text("Code expires in 10 minutes.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
                 }
             },
-            confirmButton = { TextButton(onClick = { showOtpDialog = false }) { Text("Close") } }
+            confirmButton = {
+                TextButton(onClick = {
+                    showOtpDialog = false
+                    otpToShow = null
+                }) { Text("Close") }
+            }
         )
     }
 
