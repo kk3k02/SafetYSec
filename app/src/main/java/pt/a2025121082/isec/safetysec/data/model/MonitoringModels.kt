@@ -75,7 +75,7 @@ data class TimeWindow(
 
     /** Helper to display selected days in UI */
     fun daysToString(): String {
-        val names = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+        val names = listOf("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
         return daysOfWeek.sorted().joinToString(", ") { names.getOrNull(it - 1) ?: "?" }
     }
 }
