@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Schedule
@@ -13,7 +14,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -26,6 +30,7 @@ import pt.a2025121082.isec.safetysec.ui.protected.ProtectedProfileScreen
 import pt.a2025121082.isec.safetysec.ui.protected.ProtectedWindowsScreen
 import pt.a2025121082.isec.safetysec.data.model.RuleType
 import pt.a2025121082.isec.safetysec.viewmodel.AppViewModel
+import android.widget.Toast
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -41,6 +46,8 @@ fun ProtectedFlow(
     val canTriggerPanic = appViewModel.state.monitorRuleBundles.any { bundle ->
         bundle.authorizedTypes.contains(RuleType.PANIC)
     }
+    val showClearDialog = remember { mutableStateOf(false) }
+    val context = LocalContext.current
 
     LaunchedEffect(Unit) { appViewModel.setActiveMode(pt.a2025121082.isec.safetysec.viewmodel.AppMode.PROTECTED) }
 
@@ -60,6 +67,12 @@ fun ProtectedFlow(
                 actions = {
                     IconButton(onClick = onProfile) {
                         Icon(Icons.Default.Person, contentDescription = "Profile")
+                    }
+                    IconButton(
+                        onClick = { showClearDialog.value = true },
+                        enabled = appViewModel.state.myAlerts.isNotEmpty()
+                    ) {
+                        Icon(Icons.Default.Delete, contentDescription = "Clear history")
                     }
                     IconButton(onClick = onLogout) {
                         Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = "Logout")
@@ -135,6 +148,24 @@ fun ProtectedFlow(
         }
 
         ProtectedCancelAlertDialog(appViewModel)
+    }
+
+    if (showClearDialog.value) {
+        AlertDialog(
+            onDismissRequest = { showClearDialog.value = false },
+            title = { Text("Clear history") },
+            text = { Text("This will delete all recent alerts from your history.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    appViewModel.clearMyAlertsHistory()
+                    Toast.makeText(context, "History cleared", Toast.LENGTH_SHORT).show()
+                    showClearDialog.value = false
+                }) { Text("Delete") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearDialog.value = false }) { Text("Cancel") }
+            }
+        )
     }
 }
 

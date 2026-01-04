@@ -116,6 +116,14 @@ class AlertRepository @Inject constructor(
         return snap.toObjects(Alert::class.java)
     }
 
+    suspend fun clearProtectedAlertHistory(uid: String) {
+        val snap = firestore.collection("users").document(uid).collection("my_alerts").get().await()
+        if (snap.isEmpty) return
+        val batch = firestore.batch()
+        snap.documents.forEach { doc -> batch.delete(doc.reference) }
+        batch.commit().await()
+    }
+
     private suspend fun waitForCancel(code: String, provider: suspend () -> String?): Boolean {
         repeat(40) {
             if (provider()?.trim() == code) return true

@@ -307,6 +307,14 @@ class AppViewModel @Inject constructor(
         } catch (e: Exception) { }
     }
 
+    fun clearMyAlertsHistory() = viewModelScope.launch {
+        val uid = state.me?.uid ?: authRepo.getCurrentUid() ?: return@launch
+        try {
+            alertRepo.clearProtectedAlertHistory(uid)
+            state = state.copy(myAlerts = emptyList())
+        } catch (e: Exception) { }
+    }
+
     fun loadMyProfile() = viewModelScope.launch {
         state = state.copy(isLoading = true)
         try {
