@@ -298,6 +298,14 @@ class AppViewModel @Inject constructor(
         state = state.copy(pendingAlerts = state.pendingAlerts.drop(1))
     }
 
+    fun refreshMyAlertsHistory() = viewModelScope.launch {
+        val uid = state.me?.uid ?: authRepo.getCurrentUid() ?: return@launch
+        startMyAlertsListener(uid)
+        try {
+            state = state.copy(myAlerts = alertRepo.getProtectedAlertHistory(uid))
+        } catch (e: Exception) { }
+    }
+
     fun loadMyProfile() = viewModelScope.launch {
         state = state.copy(isLoading = true)
         try {

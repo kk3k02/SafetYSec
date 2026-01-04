@@ -62,6 +62,12 @@ fun ProtectedHistoryScreen(vm: AppViewModel) {
     val sdf = remember { SimpleDateFormat("HH:mm:ss dd/MM", Locale.getDefault()) }
     var selectedAlertForVideo by remember { mutableStateOf<Alert?>(null) }
 
+    LaunchedEffect(st.me?.uid) {
+        if (st.me?.uid != null) {
+            vm.refreshMyAlertsHistory()
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
