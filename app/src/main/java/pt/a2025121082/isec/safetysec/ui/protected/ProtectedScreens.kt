@@ -439,6 +439,7 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
     var showUpdateSuccessDialog by remember { mutableStateOf(false) }
     var pendingRequestMonitor by remember { mutableStateOf<Pair<User, List<RuleType>>?>(null) }
     var shownRequestKeys by remember { mutableStateOf(setOf<String>()) }
+    val grantableRules = remember { RuleType.values().filterNot { it == RuleType.INACTIVITY } }
 
     LaunchedEffect(st.isRemovalSuccessful) {
         if (st.isRemovalSuccessful) showRemovalSuccessDialog = true
@@ -510,7 +511,7 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
                         HorizontalDivider(Modifier.padding(vertical = 12.dp))
                         Text("Grant Permissions:", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
 
-                        RuleType.values().forEach { type ->
+                        grantableRules.forEach { type ->
                             Row(
                                 Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,

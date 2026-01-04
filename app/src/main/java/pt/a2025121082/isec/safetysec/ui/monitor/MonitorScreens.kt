@@ -249,10 +249,17 @@ fun MonitorLinkScreen(vm: AppViewModel) {
     val st = vm.state
     var code by remember { mutableStateOf("") }
     var showSuccessDialog by remember { mutableStateOf(false) }
+    var showErrorDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(st.isLinkingSuccessful) {
         if (st.isLinkingSuccessful) {
             showSuccessDialog = true
+        }
+    }
+
+    LaunchedEffect(st.linkError) {
+        if (st.linkError != null) {
+            showErrorDialog = true
         }
     }
 
@@ -298,13 +305,30 @@ fun MonitorLinkScreen(vm: AppViewModel) {
             }
         )
     }
+
+    if (showErrorDialog && st.linkError != null) {
+        AlertDialog(
+            onDismissRequest = {
+                showErrorDialog = false
+                vm.consumeLinkError()
+            },
+            title = { Text("Error") },
+            text = { Text(st.linkError) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showErrorDialog = false
+                    vm.consumeLinkError()
+                }) { Text("OK") }
+            }
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MonitorRulesScreen(vm: AppViewModel) {
     val st = vm.state
-
+    val displayRules = remember { RuleType.values().filterNot { it == RuleType.INACTIVITY } }
     var expanded by remember { mutableStateOf(false) }
     var selectedUser by remember { mutableStateOf<User?>(null) }
     var showRequestDialog by remember { mutableStateOf(false) }
@@ -369,7 +393,7 @@ fun MonitorRulesScreen(vm: AppViewModel) {
                             Text("Green = Authorized, Red = Denied", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
                             Spacer(Modifier.height(8.dp))
 
-                            RuleType.values().forEach { type ->
+                            displayRules.forEach { type ->
                                 val isAuth = bundle.authorizedTypes.contains(type)
                                 Row(
                                     Modifier.fillMaxWidth().padding(vertical = 2.dp),
@@ -463,7 +487,7 @@ fun RequestRulesDialog(
     var accident by remember { mutableStateOf(false) }
     var geofence by remember { mutableStateOf(false) }
     var speed by remember { mutableStateOf(false) }
-    var inactivity by remember { mutableStateOf(false) }
+    var prolongedInactivity by remember { mutableStateOf(false) }
     var panic by remember { mutableStateOf(false) }
 
     var maxSpeed by remember { mutableStateOf("") }
@@ -488,7 +512,7 @@ fun RequestRulesDialog(
                 RuleToggle("Accident Detection", accident) { accident = it }
                 RuleToggle("Geofencing", geofence) { geofence = it }
                 RuleToggle("Speed Monitoring", speed) { speed = it }
-                RuleToggle("Inactivity Tracking", inactivity) { inactivity = it }
+                RuleToggle("Prolonged Inactivity", prolongedInactivity) { prolongedInactivity = it }
                 RuleToggle("Panic Button", panic) { panic = it }
 
                 Spacer(Modifier.height(16.dp))
@@ -501,7 +525,7 @@ fun RequestRulesDialog(
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                     )
                 }
-                if (inactivity) {
+                if (prolongedInactivity) {
                     OutlinedTextField(
                         value = inactMin,
                         onValueChange = { inactMin = it },
@@ -545,7 +569,7 @@ fun RequestRulesDialog(
                     if (accident) add(RuleType.ACCIDENT)
                     if (geofence) add(RuleType.GEOFENCE)
                     if (speed) add(RuleType.SPEED)
-                    if (inactivity) add(RuleType.INACTIVITY)
+                    if (prolongedInactivity) add(RuleType.PROLONGED_INACTIVITY)
                     if (panic) add(RuleType.PANIC)
                 }
                 val params = RuleParams(

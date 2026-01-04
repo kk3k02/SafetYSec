@@ -41,6 +41,7 @@ data class AppUiState(
     val linkedProtectedUsers: List<User> = emptyList(),
     val myOtp: String? = null,
     val isLinkingSuccessful: Boolean = false,
+    val linkError: String? = null,
     val isAlertSent: Boolean = false,
     val isRemovalSuccessful: Boolean = false,
     val isRequestSuccessful: Boolean = false,
@@ -322,7 +323,7 @@ class AppViewModel @Inject constructor(
 
                 state = state.copy(
                     monitorRuleBundles = bundles,
-                    inactivityAuthorized = bundles.any { it.authorizedTypes.contains(RuleType.INACTIVITY) }
+                    inactivityAuthorized = bundles.any { it.authorizedTypes.contains(RuleType.PROLONGED_INACTIVITY) }
                 )
             }
     }
@@ -336,7 +337,7 @@ class AppViewModel @Inject constructor(
                 monitorRuleBundles = bundles,
                 timeWindows = windows,
                 myLinkedMonitors = me.monitors.map { authRepo.getUserProfile(it) },
-                inactivityAuthorized = bundles.any { it.authorizedTypes.contains(RuleType.INACTIVITY) },
+                inactivityAuthorized = bundles.any { it.authorizedTypes.contains(RuleType.PROLONGED_INACTIVITY) },
                 inactivityDurationMin = me.inactivityDurationMin
             )
         } catch (e: Exception) { }
@@ -365,13 +366,37 @@ class AppViewModel @Inject constructor(
 
     fun consumeSecurityUpdateSuccess() { state = state.copy(isSecurityUpdateSuccessful = false) }
     fun consumeLinkingSuccess() { state = state.copy(isLinkingSuccessful = false) }
+    fun consumeLinkError() { state = state.copy(linkError = null) }
     fun consumeAlertSentSuccess() { state = state.copy(isAlertSent = false) }
     fun consumeRemovalSuccess() { state = state.copy(isRemovalSuccessful = false) }
     fun consumeRequestSuccess() { state = state.copy(isRequestSuccessful = false) }
     fun consumeAdditionSuccess() { state = state.copy(isAdditionSuccessful = false) }
 
     fun generateOtp() = viewModelScope.launch { try { state = state.copy(myOtp = authRepo.generateAssociationCode()) } catch (e: Exception) {} }
-    fun linkWithOtp(code: String) = viewModelScope.launch { try { authRepo.linkWithAssociationCode(code); state = state.copy(isLinkingSuccessful = true) } catch (e: Exception) {} }
+    fun linkWithOtp(code: String) = viewModelScope.launch {
+        try {
+            authRepo.linkWithAssociationCode(code)
+            val uid = authRepo.getCurrentUid()
+            if (uid != null) {
+                val me = authRepo.getUserProfile(uid)
+                state = state.copy(
+                    me = me,
+                    linkedProtectedUsers = me.protectedUsers.map { authRepo.getUserProfile(it) },
+                    isLinkingSuccessful = true
+                )
+                startMonitoringDashboard(uid)
+            } else {
+                state = state.copy(isLinkingSuccessful = true)
+            }
+        } catch (e: Exception) {
+            val msg = e.message ?: "Linking failed."
+            state = if (msg.contains("Cannot monitor yourself")) {
+                state.copy(linkError = "A user cannot be their own monitor and protected user.")
+            } else {
+                state.copy(error = msg)
+            }
+        }
+    }
     fun removeMonitor(id: String) = viewModelScope.launch { try { authRepo.removeAssociation(id, state.me!!.uid); state = state.copy(isRemovalSuccessful = true) } catch (e: Exception) {} }
     fun removeProtectedUser(id: String) = viewModelScope.launch { try { authRepo.removeAssociation(state.me!!.uid, id); state = state.copy(isRemovalSuccessful = true) } catch (e: Exception) {} }
     fun requestRulesForProtected(p: String, t: List<RuleType>, r: RuleParams) = viewModelScope.launch { try { monitoringRepo.requestRules(p, state.me!!.uid, t.map { MonitoringRule(it, r, true) }); state = state.copy(isRequestSuccessful = true) } catch (e: Exception) {} }
@@ -408,7 +433,7 @@ class AppViewModel @Inject constructor(
     }
 
     private fun triggerInactivityAlert() = viewModelScope.launch {
-        triggerAlertWithTimer(RuleType.INACTIVITY)
+        triggerAlertWithTimer(RuleType.PROLONGED_INACTIVITY)
     }
 
     override fun onCleared() {
