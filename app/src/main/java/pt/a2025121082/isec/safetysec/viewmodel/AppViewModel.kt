@@ -113,6 +113,7 @@ class AppViewModel @Inject constructor(
 
     @SuppressLint("MissingPermission")
     fun startActualRecording() {
+        if (state.activeMode != AppMode.PROTECTED) return
         val alertId = currentAlertIdForRecording ?: return
         if (recording != null) return
 
@@ -270,6 +271,9 @@ class AppViewModel @Inject constructor(
                     }
 
                     if (isMonitor) {
+                        viewModelScope.launch {
+                            state = state.copy(linkedProtectedUsers = me.protectedUsers.map { authRepo.getUserProfile(it) })
+                        }
                         startMonitoringDashboard(me.uid)
                     } else if (wasMonitor) {
                         stopMonitoringDashboard()
@@ -447,7 +451,19 @@ class AppViewModel @Inject constructor(
 
     fun setActiveMode(mode: AppMode) {
         if (state.activeMode != mode) {
-            state = state.copy(activeMode = mode)
+            if (mode == AppMode.MONITOR) {
+                stopVideoRecording()
+                state = state.copy(
+                    activeMode = mode,
+                    isCancelWindowOpen = false,
+                    cancelSecondsLeft = 0,
+                    isRecordingPopupOpen = false,
+                    recordingSecondsLeft = 0,
+                    userInactivitySeconds = 0
+                )
+            } else {
+                state = state.copy(activeMode = mode)
+            }
         }
     }
 
