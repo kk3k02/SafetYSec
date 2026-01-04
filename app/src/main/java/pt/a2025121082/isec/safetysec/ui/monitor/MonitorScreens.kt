@@ -47,6 +47,11 @@ fun MonitorDashboardScreen(vm: AppViewModel) {
     var showRemovalSuccessDialog by remember { mutableStateOf(false) }
     var showClearedDialog by remember { mutableStateOf(false) }
 
+    LaunchedEffect(state.me?.uid, state.me?.protectedUsers) {
+        val uid = state.me?.uid ?: return@LaunchedEffect
+        vm.startMonitoringDashboard(uid)
+    }
+
     LaunchedEffect(state.isRemovalSuccessful) {
         if (state.isRemovalSuccessful) {
             showRemovalSuccessDialog = true
@@ -81,7 +86,7 @@ fun MonitorDashboardScreen(vm: AppViewModel) {
                 EmptyStateCard("No users assigned to your account yet.")
             }
         } else {
-            items(state.linkedProtectedUsers) { user ->
+            items(state.linkedProtectedUsers, key = { it.uid }) { user ->
                 ProtectedUserStatusCard(user, onRemove = { vm.removeProtectedUser(user.uid) })
             }
         }
@@ -108,7 +113,7 @@ fun MonitorDashboardScreen(vm: AppViewModel) {
                 EmptyStateCard("No alerts recorded recently.")
             }
         } else {
-            items(state.monitorAlerts) { alert ->
+            items(state.monitorAlerts, key = { it.id }) { alert ->
                 AlertItem(alert, sdf)
             }
         }
