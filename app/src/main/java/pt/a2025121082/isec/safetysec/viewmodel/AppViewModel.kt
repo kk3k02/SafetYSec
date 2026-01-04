@@ -2,6 +2,7 @@ package pt.a2025121082.isec.safetysec.viewmodel
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.util.Log
 import androidx.camera.core.CameraSelector
@@ -573,6 +574,7 @@ class AppViewModel @Inject constructor(
                     monitorRuleBundles = bundles,
                     inactivityAuthorized = bundles.any { it.authorizedTypes.contains(RuleType.PROLONGED_INACTIVITY) }
                 )
+                syncFallDetectionWithAuthorizations()
                 updateSpeedMonitorState()
                 updateAccidentMonitorState()
                 viewModelScope.launch {
@@ -594,6 +596,7 @@ class AppViewModel @Inject constructor(
                 inactivityAuthorized = bundles.any { it.authorizedTypes.contains(RuleType.PROLONGED_INACTIVITY) },
                 inactivityDurationMin = me.inactivityDurationMin
             )
+            syncFallDetectionWithAuthorizations()
             updateSpeedMonitorState()
             updateAccidentMonitorState()
             checkSpeedOnce()
@@ -681,15 +684,21 @@ class AppViewModel @Inject constructor(
     }
     fun addTimeWindow(d: List<Int>, s: Int, e: Int) = viewModelScope.launch { try { monitoringRepo.addTimeWindow(state.me!!.uid, TimeWindow(daysOfWeek = d, startHour = s, endHour = e)); state = state.copy(isAdditionSuccessful = true) } catch (e: Exception) {} }
     fun removeTimeWindow(id: String) = viewModelScope.launch { try { monitoringRepo.deleteTimeWindow(state.me!!.uid, id); state = state.copy(isRemovalSuccessful = true) } catch (e: Exception) {} }
-    fun toggleFallDetection(ctx: Context) {
+    fun setFallDetectionEnabled(enabled: Boolean) {
         val me = state.me ?: return
-        if (!me.roles.contains("Protected") || state.activeMode != AppMode.PROTECTED) return
-        val n = !state.isFallDetectionEnabled
-        val i = android.content.Intent(ctx, FallDetectionService::class.java)
-        if (n) {
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) ctx.startForegroundService(i) else ctx.startService(i)
-        } else ctx.stopService(i)
-        state = state.copy(isFallDetectionEnabled = n)
+        if (!me.roles.contains("Protected")) return
+        if (enabled == state.isFallDetectionEnabled) return
+        val intent = Intent(context, FallDetectionService::class.java)
+        if (enabled) {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+        } else {
+            context.stopService(intent)
+        }
+        state = state.copy(isFallDetectionEnabled = enabled)
     }
 
     fun dismissRecordingPopup() {
@@ -716,6 +725,7 @@ class AppViewModel @Inject constructor(
     fun setActiveMode(mode: AppMode) {
         if (state.activeMode != mode) {
             if (mode == AppMode.MONITOR) {
+                setFallDetectionEnabled(false)
                 stopVideoRecording()
                 state = state.copy(
                     activeMode = mode,
@@ -730,6 +740,7 @@ class AppViewModel @Inject constructor(
             } else {
                 state = state.copy(activeMode = mode)
                 scheduleProtectedMonitoringStart()
+                syncFallDetectionWithAuthorizations()
             }
         }
     }
@@ -766,6 +777,12 @@ class AppViewModel @Inject constructor(
 
     private fun isAccidentAuthorized(): Boolean =
         state.monitorRuleBundles.any { it.authorizedTypes.contains(RuleType.ACCIDENT) }
+
+    private fun syncFallDetectionWithAuthorizations() {
+        val shouldEnable = state.activeMode == AppMode.PROTECTED &&
+            state.monitorRuleBundles.any { it.authorizedTypes.contains(RuleType.FALL) }
+        setFallDetectionEnabled(shouldEnable)
+    }
 
     private fun authorizedMaxSpeedKmh(): Float? {
         val limits = state.monitorRuleBundles

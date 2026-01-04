@@ -747,7 +747,6 @@ fun ProtectedProfileScreen(
 ) {
     val st = vm.state
     val authSt = authVm.uiState
-    val context = LocalContext.current
     var inactivityMin by remember(st.inactivityDurationMin) { mutableStateOf(st.inactivityDurationMin.toString()) }
     var showSecurityPopup by remember { mutableStateOf(false) }
     var securityPopupMessage by remember { mutableStateOf("Your security settings (PIN and inactivity duration) have been successfully updated.") }
@@ -775,25 +774,6 @@ fun ProtectedProfileScreen(
         Spacer(Modifier.height(24.dp))
         Text("Security Settings", style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(8.dp))
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column {
-                Text("Fall detection", style = MaterialTheme.typography.bodyMedium)
-                Text(
-                    "Run background monitoring on this device",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color.Gray
-                )
-            }
-            Switch(
-                checked = st.isFallDetectionEnabled,
-                onCheckedChange = { vm.toggleFallDetection(context) }
-            )
-        }
 
         Button(
             onClick = {
