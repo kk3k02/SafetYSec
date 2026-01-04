@@ -620,7 +620,17 @@ fun ProtectedMonitorsAndRulesScreen(vm: AppViewModel) {
                 Column {
                     Text("${monitor.name} is requesting access to the following rules:")
                     Spacer(Modifier.height(8.dp))
-                    requestedTypes.forEach { type -> Text("• ${type.displayName()}", fontWeight = FontWeight.SemiBold) }
+                    requestedTypes.forEach { type ->
+                        val minutes = if (type == RuleType.PROLONGED_INACTIVITY) {
+                            requestedRules.firstOrNull { it.type == type }?.params?.inactivityDurationMin
+                        } else null
+                        val label = if (minutes != null) {
+                            "${type.displayName()} ($minutes min)"
+                        } else {
+                            type.displayName()
+                        }
+                        Text("- $label", fontWeight = FontWeight.SemiBold)
+                    }
                     Spacer(Modifier.height(12.dp))
                     Text("Do you want to grant these permissions?", style = MaterialTheme.typography.bodySmall)
                 }
@@ -896,3 +906,4 @@ fun ProtectedCancelAlertDialog(vm: AppViewModel) {
         )
     }
 }
+
