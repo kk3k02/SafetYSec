@@ -51,9 +51,6 @@ fun MonitorFlow(
                     Text(title)
                 },
                 actions = {
-                    IconButton(onClick = onProfile) {
-                        Icon(Icons.Default.Person, contentDescription = "Profile")
-                    }
                     IconButton(onClick = onLogout) {
                         Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = "Logout")
                     }
